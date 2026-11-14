@@ -68,7 +68,7 @@
     <div class="grid field">
       <div>
         <label>候选来源</label>
-        <div class="small">NiREvil/VLESS 公开地区名单（动态读取；已核实快照覆盖 69 个地区）</div>
+        <div class="small">NiREvil/VLESS 公开地区名单（动态读取；实际覆盖随上游变化，运行后显示）</div>
       </div>
       <div><label for="perCountry">每地区最多候选</label><input id="perCountry" type="number" value="10" min="1" max="100"></div>
       <div><label for="totalLimit">整批最多候选</label><input id="totalLimit" type="number" value="500" min="1" max="2000"></div>
@@ -87,7 +87,7 @@
     <div class="grid field">
       <div style="grid-column:span 2">
         <label for="countries">国家/地区代码（ISO 3166-1 alpha-2，可输入多个）</label>
-        <textarea id="countries" autocomplete="off" spellcheck="false" placeholder="点击“全球全部 249 个”或输入 JP,HK,SG,TW"></textarea>
+        <textarea id="countries" autocomplete="off" spellcheck="false" placeholder="点击“全部 249 个 ISO 地区”或输入 JP,HK,SG,TW"></textarea>
         <div class="hint" id="countryCount">完整代码目录加载中</div>
         <details class="field">
           <summary>搜索并勾选 ISO 国家/地区代码</summary>
@@ -96,7 +96,7 @@
         </details>
       </div>
       <div class="actions" style="align-content:end">
-        <button id="selectWorld" class="secondary" type="button">全球全部 249 个</button>
+        <button id="selectWorld" class="secondary" type="button">全部 249 个 ISO 地区</button>
         <button id="selectCommon" class="secondary" type="button">常用 JP/HK/SG/TW</button>
       </div>
     </div>
@@ -124,7 +124,7 @@
   </section>
 
 
-  <footer>后台任务在服务器进程运行期间持续执行，关闭或刷新此页面不会中断；服务重启后，内存中的任务状态和结果不会保留。公开名单每次运行动态下载；已核实的本地快照覆盖 69 个地区，实时名单覆盖范围可能变化。任务最多处理 2,000 个候选、每地区最多 100 个，Trace 并发最多 16，并支持取消。有效结果可导出为 TXT/CSV，供本地二次筛选。</footer>
+  <footer>后台任务在服务器进程运行期间持续执行，关闭或刷新此页面不会中断；服务重启后，内存中的任务状态和结果不会保留。公开名单每次运行动态下载；249 是可选 ISO 地区的数量，不代表名单实际覆盖全部地区。任务最多处理 2,000 个候选、每地区最多 100 个，Trace 并发最多 16，并支持取消。有效结果可导出为 TXT/CSV，供本地二次筛选。</footer>
 </main>
 <script>
 (() => {
