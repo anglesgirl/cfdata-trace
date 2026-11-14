@@ -25,7 +25,7 @@ const (
 	traceSweepSourceFOFA         = "fofa"
 	traceSweepSourceRegional     = "regional"
 	traceSweepDefaultPerCountry  = 10
-	traceSweepMaxPerCountry      = 100
+	traceSweepMaxPerCountry      = 200
 	traceSweepDefaultTotalLimit  = 500
 	traceSweepMaxTotalLimit      = 2000
 	traceSweepMaxCountries       = 249
@@ -227,11 +227,9 @@ func handleTraceSweepStart(w http.ResponseWriter, r *http.Request) {
 		writeTraceJSONError(w, http.StatusBadRequest, "端口必须在 1–65535 之间")
 		return
 	}
-	if req.PerCountry == 0 {
-		req.PerCountry = traceSweepDefaultPerCountry
-	}
-	if req.PerCountry < 1 || req.PerCountry > traceSweepMaxPerCountry {
-		writeTraceJSONError(w, http.StatusBadRequest, fmt.Sprintf("每地区结果上限必须在 1–%d 之间", traceSweepMaxPerCountry))
+	req.PerCountry, err = normalizeTraceSweepPerCountry(req.PerCountry)
+	if err != nil {
+		writeTraceJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if req.TotalLimit == 0 {
@@ -827,6 +825,16 @@ func parseFOFACandidate(row []string) (traceSweepCandidate, bool) {
 		return traceSweepCandidate{}, false
 	}
 	return traceSweepCandidate{Address: parsed, Source: "FOFA", Country: country, City: city}, true
+}
+
+func normalizeTraceSweepPerCountry(value int) (int, error) {
+	if value == 0 {
+		return traceSweepDefaultPerCountry, nil
+	}
+	if value < 1 || value > traceSweepMaxPerCountry {
+		return 0, fmt.Errorf("每地区结果上限必须在 1–%d 之间", traceSweepMaxPerCountry)
+	}
+	return value, nil
 }
 
 func normalizeTraceCountries(values []string) ([]string, error) {

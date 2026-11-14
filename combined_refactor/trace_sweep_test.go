@@ -51,6 +51,23 @@ func TestNormalizeTraceCountries(t *testing.T) {
 	}
 }
 
+func TestNormalizeTraceSweepPerCountryHardLimit(t *testing.T) {
+	if got, err := normalizeTraceSweepPerCountry(0); err != nil || got != traceSweepDefaultPerCountry {
+		t.Fatalf("zero per-country limit = %d, %v; want default %d", got, err, traceSweepDefaultPerCountry)
+	}
+	for _, value := range []int{1, traceSweepDefaultPerCountry, 100, 200} {
+		got, err := normalizeTraceSweepPerCountry(value)
+		if err != nil || got != value {
+			t.Fatalf("per-country limit %d = %d, %v; want accepted unchanged", value, got, err)
+		}
+	}
+	for _, value := range []int{-1, 201} {
+		if _, err := normalizeTraceSweepPerCountry(value); err == nil || !strings.Contains(err.Error(), "1–200") {
+			t.Fatalf("per-country limit %d should be rejected with the 1–200 boundary, got %v", value, err)
+		}
+	}
+}
+
 func TestParseRegionalCandidateRecord(t *testing.T) {
 	candidate, ok := parsePublicProxyIPRecord(proxyIPRecord{
 		IP: "8.8.8.8", Port: 443, Country: " jp ", City: "Tokyo", Region: "Tokyo", ISP: "Example ISP", Score: 2, Risk: "low",
@@ -278,7 +295,7 @@ func TestTracePageServesEmbeddedRegionSweepUI(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("got status %d, want %d", rec.Code, http.StatusOK)
 	}
-	for _, text := range []string{"地区候选 IP 初筛", "公开区域名单与 Trace 初筛", "NiREvil/vless 地区清单", "严格校验", "供本地二次筛选"} {
+	for _, text := range []string{"地区候选 IP 初筛", "公开区域名单与 Trace 初筛", "NiREvil/vless 地区清单", "严格校验", "供本地二次筛选", `max="200"`, "每地区最多 200 个"} {
 		if !strings.Contains(rec.Body.String(), text) {
 			t.Fatalf("embedded Trace page is missing %q", text)
 		}
