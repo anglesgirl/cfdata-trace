@@ -6,6 +6,8 @@
 
 容器必须设置 `CFDATA_TRACE_ONLY=1`、`CFDATA_WEB_USER` 和 `CFDATA_WEB_PASSWORD`。没有用户名或密码时程序拒绝启动。登录 Cookie 带 `HttpOnly`、`SameSite=Lax` 和 `Secure`；对外只经 Coolify HTTPS 反向代理提供访问。容器以非 root 用户运行，不需要持久化卷；任务状态和结果存于进程内存，容器重启后清空。
 
+Cloudflare 的 Full (strict) 配置规则仅匹配 `cfdata-trace.anglesya.win`，不改变区域全局 SSL 模式或现有规则，源站使用受信任且匹配域名的证书。
+
 ## 候选源与探测行为
 
 页面与服务端只允许 NiREvil/VLESS 公开区域名单作为候选源；省略 `source` 时也默认选择此来源，region-only 模式会拒绝 FOFA。部署不设置也不使用 `FOFA_KEY`。用户按 ISO 3166-1 alpha-2 地区选择候选，页面支持 JP/HK/SG/TW 和选择全部 249 个地区。名单运行时从上游动态下载；已审阅的本地快照为 3,920 条、覆盖 69 个地区，快照时间 2026-11-13 13:01 UTC；实时上游的记录数和覆盖范围可能变化。此名单只是粗筛数据，不等同于 FOFA 查询结果，也不证明支持任意目标域名。
@@ -14,6 +16,6 @@
 
 ## 运行与验证
 
-根目录 `Dockerfile` 从 `combined_refactor/` 构建独立 Go 模块，产出无 CGO Linux 可执行文件，最终镜像为 Distroless 非 root。容器暴露 13335，Coolify 健康检查使用 `/healthz`。Trace-only 启动跳过原程序的测速源预检、Geo 初始化、更新检查和基础扫描页面/API。
+根目录 `Dockerfile` 从 `combined_refactor/` 构建独立 Go 模块，产出无 CGO Linux 可执行文件，最终镜像为 Alpine 非 root，并包含 Coolify 健康检查所需的 curl。容器暴露 13335，Coolify 健康检查使用 `/healthz`。Trace-only 启动跳过原程序的测速源预检、Geo 初始化、更新检查和基础扫描页面/API。
 
 本地通过 `go test ./...`、`go test -race ./...`、`go vet ./...`、Linux amd64 构建及页面 JavaScript 语法检查。运行冒烟验证通过登录/HTTPS Cookie 属性、首页跳转、249 项地区目录、空闲任务状态、安全取消、空 CSV 导出；FOFA API 来源被拒绝，手工探测接口不存在。部署检查不会启动任何候选任务，不连接任何候选 IP，也不执行全局扫描。
