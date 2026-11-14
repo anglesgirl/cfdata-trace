@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>地区 Trace 初筛 · CFData-WEB</title>
+  <style>
+    :root { color-scheme:dark; --bg:#0b1020; --panel:#121a2b; --line:#26344c; --text:#eef4ff; --muted:#9aabc4; --cyan:#66d9ef; --green:#54d39b; --red:#ff7c86; --gold:#f6c86d; }
+    * { box-sizing:border-box }
+    body { margin:0; background:radial-gradient(ellipse at 15% 0%,#153148 0,transparent 35%),var(--bg); color:var(--text); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(100% - 28px,1120px); margin:28px auto 56px }
+    header { margin-bottom:22px }
+    .eyebrow { color:var(--cyan); font-size:12px; letter-spacing:.13em; text-transform:uppercase; font-weight:700 }
+    h1 { margin:7px 0 8px; font-size:clamp(26px,5vw,38px); line-height:1.15 }
+    h2 { font-size:20px; margin:0 }
+    h3 { font-size:16px; margin:20px 0 8px }
+    p { margin:6px 0; color:var(--muted) }
+    a { color:var(--cyan) }
+    .card { border:1px solid var(--line); background:linear-gradient(155deg,rgba(18,26,43,.97),rgba(12,20,34,.97)); border-radius:18px; padding:20px; box-shadow:0 18px 50px #0003; margin:16px 0 }
+    .grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px }
+    .grid.two { grid-template-columns:minmax(0,1fr) 245px }
+    label { display:block; font-size:13px; color:#cfdbed; font-weight:650; margin:0 0 7px }
+    input,textarea,select { width:100%; border:1px solid #34435a; border-radius:10px; background:#091221; color:var(--text); padding:11px 12px; font:inherit; outline:none }
+    input:focus,textarea:focus,select:focus { border-color:var(--cyan); box-shadow:0 0 0 3px #66d9ef20 }
+    input[readonly],input:disabled { color:#a8b8cc; background:#101a2a }
+    textarea { min-height:90px; resize:vertical; font:14px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace }
+    .field { margin-top:16px }
+    .hint { font-size:12px; margin-top:6px }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:16px }
+    button,.back,.download { border:1px solid transparent; border-radius:10px; padding:10px 15px; color:#06131d; background:var(--cyan); font:700 14px system-ui,sans-serif; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center }
+    button.secondary,.back,.download.secondary { background:#19263b; border-color:#35465f; color:var(--text) }
+    button.danger { background:#5b2530; border-color:#823745; color:#ffe5e8 }
+    button:disabled,.download[aria-disabled="true"] { opacity:.45; cursor:not-allowed; pointer-events:none }
+    .status { margin-left:auto; font-size:13px; color:var(--muted) }
+    .warning { border-left:3px solid var(--gold); padding:9px 12px; background:#f6c86d0d; color:#dac998; font-size:12px; border-radius:3px 8px 8px 3px; margin-top:16px }
+    .summary { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 }
+    .pill { border:1px solid var(--line); border-radius:999px; padding:6px 11px; color:#c6d4e8; font-size:12px }
+    .tablewrap { overflow:auto; border:1px solid var(--line); border-radius:12px; margin-top:12px }
+    table { width:100%; border-collapse:collapse; min-width:850px; font-size:13px }
+    th,td { padding:11px 12px; border-bottom:1px solid #26344c; text-align:left; vertical-align:top }
+    th { color:#9eb0ca; font-weight:650; background:#0d1727; position:sticky; top:0 }
+    tr:last-child td { border-bottom:0 }
+    code { color:#d7e8ff; font:12px ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere }
+    .good { color:var(--green); font-weight:700 }
+    .bad { color:var(--red); font-weight:650 }
+    .small { color:var(--muted); font-size:12px }
+    .country-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:6px; max-height:260px; overflow:auto; border:1px solid var(--line); border-radius:10px; padding:8px; margin-top:8px }
+    .country-list button { font-size:12px; padding:7px 8px; justify-content:flex-start; text-align:left }
+    progress { width:100%; height:12px; accent-color:var(--cyan); margin:10px 0 2px }
+    footer { padding:6px 2px; color:#8495ad; font-size:12px }
+    @media(max-width:800px) { .grid{grid-template-columns:repeat(2,minmax(0,1fr))} }
+    @media(max-width:650px) { main{margin-top:22px}.card{padding:16px}.grid,.grid.two{grid-template-columns:1fr}.status{width:100%;margin-left:0}.back{display:inline-flex} }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">CFData-WEB · Region Trace</div>
+    <h1>地区候选 IP 初筛</h1>
+    <p>按选定的 ISO 国家/地区读取 IP:端口候选，再由本服务直接连接候选地址，并以目标域名作为 TLS SNI 与 HTTP Host，请求固定的 <code>/cdn-cgi/trace</code>。</p>
+    <div class="actions"><a class="back" href="/auth/logout">退出登录</a></div>
+  </header>
+
+  <section class="card">
+    <h2>公开区域名单与 Trace 初筛</h2>
+    <p class="small">候选只从公开区域名单按所选地区读取；此独立服务不提供 FOFA 查询或手工 IP 探测。名单是粗筛来源，不等同于 FOFA 结果，也不保证候选支持任意 Host。</p>
+    <div class="grid field">
+      <div>
+        <label>候选来源</label>
+        <div class="small">NiREvil/VLESS 公开地区名单（动态读取；已核实快照覆盖 69 个地区）</div>
+      </div>
+      <div><label for="perCountry">每地区最多候选</label><input id="perCountry" type="number" value="10" min="1" max="100"></div>
+      <div><label for="totalLimit">整批最多候选</label><input id="totalLimit" type="number" value="500" min="1" max="2000"></div>
+      <div><label for="concurrency">Trace 并发</label><input id="concurrency" type="number" value="8" min="1" max="16"></div>
+    </div>
+    <div class="grid two field">
+      <div>
+        <label for="domain">目标域名（TLS SNI 与 HTTP Host）</label>
+        <input id="domain" autocomplete="off" spellcheck="false" placeholder="例如：example.com" maxlength="253">
+      </div>
+      <div>
+        <label for="path">检测路径（固定）</label>
+        <input id="path" value="/cdn-cgi/trace" readonly>
+      </div>
+    </div>
+    <div class="grid field">
+      <div style="grid-column:span 2">
+        <label for="countries">国家/地区代码（ISO 3166-1 alpha-2，可输入多个）</label>
+        <textarea id="countries" autocomplete="off" spellcheck="false" placeholder="点击“全球全部 249 个”或输入 JP,HK,SG,TW"></textarea>
+        <div class="hint" id="countryCount">完整代码目录加载中</div>
+        <details class="field">
+          <summary>搜索并勾选 ISO 国家/地区代码</summary>
+          <input id="countrySearch" type="search" placeholder="搜索代码或中文名称" autocomplete="off">
+          <div id="countryList" class="country-list" aria-label="ISO 国家和地区代码列表"></div>
+        </details>
+      </div>
+      <div class="actions" style="align-content:end">
+        <button id="selectWorld" class="secondary" type="button">全球全部 249 个</button>
+        <button id="selectCommon" class="secondary" type="button">常用 JP/HK/SG/TW</button>
+      </div>
+    </div>
+    <div class="warning">
+      <a href="https://github.com/NiREvil/vless/blob/main/sub/ProxyIP.md" target="_blank" rel="noreferrer">NiREvil/vless 地区清单</a>是粗筛候选源，不是已验证的任意 Host ProxyIP，也不等同于 FOFA 条件。上游验证使用固定 SNI/Host <code>cf-connecting.pages.dev</code>、请求 <code>/</code> 并关闭 TLS 证书校验；本服务会对所选目标域名严格校验证书链与主机名，再请求 <code>/cdn-cgi/trace</code>。Cloudflare 官方 IPv4/IPv6 网段仅下载用于排除，绝不作为候选；实际连接只会针对名单返回并被所选地区筛出的公网 IP:端口。源地区与 Trace 的 <code>loc</code>/<code>colo</code> 分列，<code>loc</code> 是 Trace 报告地区，不保证等于候选 IP 的物理位置。
+    </div>
+    <div class="actions">
+      <button id="startSweep">开始地区初筛</button>
+      <button id="stopSweep" class="danger" disabled>停止任务</button>
+      <a id="downloadTxt" class="download" href="/api/trace-sweep/export?format=txt" aria-disabled="true">下载有效 IP:端口 TXT</a>
+      <a id="downloadCsv" class="download secondary" href="/api/trace-sweep/export?format=csv" aria-disabled="true">下载详细 CSV</a>
+      <span id="sweepStatus" class="status" role="status" aria-live="polite">正在读取任务状态…</span>
+    </div>
+    <progress id="progress" max="1" value="0"></progress>
+    <div id="sweepSummary" class="summary"></div>
+    <div id="sweepResultsPanel" hidden>
+      <h3>有效候选（仅展示 Trace 检测成功的 IP:端口）</h3>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>来源国家/地区</th><th>来源城市</th><th>来源 ISP</th><th>候选 IP:端口</th><th>Trace loc</th><th>Trace colo</th><th>Trace ip</th><th>耗时</th></tr></thead>
+          <tbody id="sweepRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+
+  <footer>后台任务在服务器进程运行期间持续执行，关闭或刷新此页面不会中断；服务重启后，内存中的任务状态和结果不会保留。公开名单每次运行动态下载；已核实的本地快照覆盖 69 个地区，实时名单覆盖范围可能变化。任务最多处理 2,000 个候选、每地区最多 100 个，Trace 并发最多 16，并支持取消。有效结果可导出为 TXT/CSV，供本地二次筛选。</footer>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let lastStartedAt = '';
+  let resultsLoadedFor = '';
+  let timer = null;
+  let countryCatalog = {};
+  const split = text => [...new Set(text.split(/[\s,，]+/).map(v => v.trim()).filter(Boolean))];
+  const makeCell = value => { const td=document.createElement('td'); td.textContent=value || '—'; return td; };
+  async function jsonRequest(url, options) {
+    const response = await fetch(url, options);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `请求失败（HTTP ${response.status}）`);
+    return data;
+  }
+  async function loadCountryCatalog() {
+    try {
+      const data=await jsonRequest('/api/trace-countries');
+      countryCatalog=data.countries || {};
+      const list=$('countryList'); list.replaceChildren();
+      for (const code of Object.keys(countryCatalog).sort()) {
+        const button=document.createElement('button'); button.type='button'; button.className='secondary country-option'; button.dataset.code=code; button.textContent=`${code} · ${countryCatalog[code]}`;
+        button.addEventListener('click', () => {
+          const selected=split($('countries').value); const index=selected.indexOf(code);
+          if (index>=0) selected.splice(index,1); else selected.push(code);
+          $('countries').value=selected.join(',');
+        });
+        list.append(button);
+      }
+      $('countryCount').textContent=`已加载完整目录：${Object.keys(countryCatalog).length} 个 ISO 国家/地区代码；regional 可选源仅覆盖其中有候选的地区。`;
+      filterCountryList();
+    } catch (e) { $('countryCount').textContent=`读取国家/地区目录失败：${e.message}`; }
+  }
+  function filterCountryList() {
+    const query=$('countrySearch').value.trim().toLowerCase();
+    for (const button of $('countryList').querySelectorAll('.country-option')) button.hidden=!button.textContent.toLowerCase().includes(query);
+  }
+  function setDownloads(enabled) {
+    $('downloadTxt').setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    $('downloadCsv').setAttribute('aria-disabled', enabled ? 'false' : 'true');
+  }
+  function renderSweepResults(results) {
+    const body=$('sweepRows'); body.replaceChildren();
+    for (const r of results) {
+      const tr=document.createElement('tr');
+      for (const value of [r.source_country, r.source_city, r.source_isp, r.candidate, r.trace?.loc, r.trace?.colo, r.trace?.ip, `${r.elapsed_ms ?? '—'} ms`]) tr.append(makeCell(value));
+      body.append(tr);
+    }
+    $('sweepResultsPanel').hidden = results.length === 0;
+  }
+  async function loadSweepResults(startedAt) {
+    if (!startedAt || resultsLoadedFor === startedAt) return;
+    resultsLoadedFor = startedAt;
+    try {
+      const data=await jsonRequest('/api/trace-sweep/results');
+      renderSweepResults(data.results || []);
+      setDownloads((data.results || []).length > 0);
+    } catch (e) { $('sweepStatus').textContent = `读取结果失败：${e.message}`; }
+  }
+  async function refreshSweepStatus() {
+    try {
+      const s=await jsonRequest('/api/trace-sweep/status');
+      lastStartedAt=s.started_at || '';
+      $('startSweep').disabled=!!s.running;
+      $('stopSweep').disabled=!s.running;
+      $('sweepStatus').textContent=s.message || '尚未开始';
+      let percent=s.total > 0 ? Math.min(1, (s.scanned || 0)/s.total) : 0;
+      if (!s.total && s.queries_total) percent=Math.min(.2, .2*(s.queries_done||0)/s.queries_total);
+      $('progress').value=percent;
+      $('sweepSummary').replaceChildren();
+      const fields=[
+        `来源 ${s.source || '—'}`, `阶段 ${s.phase || '—'}`, `源名单记录 ${s.source_fetched || 0}`,
+        `源覆盖地区 ${s.source_regions || 0}`, `Cloudflare 官方段排除 ${s.cloudflare_excluded || 0}`,
+        `候选 ${s.total || 0}`, `已检测 ${s.scanned || 0}`, `有效 ${s.success || 0}`, `未通过 ${s.failed || 0}`
+      ];
+      if (s.source_updated_at) fields.splice(3,0,`名单更新时间 ${s.source_updated_at}`);
+      for (const text of fields) { const pill=document.createElement('span'); pill.className='pill'; pill.textContent=text; $('sweepSummary').append(pill); }
+      if (s.error) $('sweepStatus').textContent=`${s.message || '失败'}：${s.error}`;
+      if (s.started_at && !s.running) await loadSweepResults(s.started_at);
+      if (!s.running && !s.success) setDownloads(false);
+    } catch (e) { $('sweepStatus').textContent=`读取任务状态失败：${e.message}`; }
+  }
+  $('countrySearch').addEventListener('input', filterCountryList);
+  $('selectWorld').addEventListener('click', () => {
+    const codes=Object.keys(countryCatalog).sort();
+    if (!codes.length) { $('countryCount').textContent='国家/地区目录尚未加载'; return; }
+    $('countries').value=codes.join(',');
+    $('countryCount').textContent=`已选择全部 ${codes.length} 个 ISO 国家/地区；当前来源没有候选的地区会自然跳过。`;
+  });
+  $('selectCommon').addEventListener('click', () => { $('countries').value='JP,HK,SG,TW'; });
+  $('startSweep').addEventListener('click', async () => {
+    const countries=split($('countries').value).map(v=>v.toUpperCase());
+    if (!$('domain').value.trim()) { $('sweepStatus').textContent='请先填写目标域名'; return; }
+    if (!countries.length || countries.length>249 || countries.some(v=>!/^[A-Z]{2}$/.test(v) || !countryCatalog[v])) { $('sweepStatus').textContent='请选择 1–249 个 ISO 两字母地区代码；可先点击“全球全部 249 个”'; return; }
+    $('startSweep').disabled=true; $('sweepStatus').textContent='正在启动后台任务…'; setDownloads(false);
+    try {
+      await jsonRequest('/api/trace-sweep/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:'regional',domain:$('domain').value,countries,per_country:Number($('perCountry').value),total_limit:Number($('totalLimit').value),concurrency:Number($('concurrency').value)})});
+      resultsLoadedFor=''; $('sweepRows').replaceChildren(); $('sweepResultsPanel').hidden=true;
+      await refreshSweepStatus();
+      if (!timer) timer=setInterval(refreshSweepStatus,3000);
+    } catch(e) { $('sweepStatus').textContent=e.message; $('startSweep').disabled=false; }
+  });
+  $('stopSweep').addEventListener('click', async () => {
+    $('stopSweep').disabled=true; $('sweepStatus').textContent='正在发送停止信号…';
+    try { await jsonRequest('/api/trace-sweep/stop',{method:'POST'}); await refreshSweepStatus(); }
+    catch(e) { $('sweepStatus').textContent=e.message; }
+  });
+  loadCountryCatalog();
+  refreshSweepStatus(); timer=setInterval(refreshSweepStatus,3000);
+})();
+</script>
+</body>
+</html>
