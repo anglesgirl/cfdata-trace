@@ -52,6 +52,11 @@ var (
 	traceCountryDataOnce sync.Once
 	traceCountryData     map[string]string
 	traceCountryDataErr  error
+	traceCFRangeCache    = struct {
+		sync.Mutex
+		prefixes  []netip.Prefix
+		expiresAt time.Time
+	}{}
 )
 
 type traceSweepRequest struct {
@@ -749,6 +754,28 @@ func loadCloudflareExclusionPrefixes(ctx context.Context) ([]netip.Prefix, error
 		return nil, fmt.Errorf("Cloudflare 官方网段排除清单不完整；本次停止")
 	}
 	return prefixes, nil
+}
+
+func cachedCloudflareExclusionPrefixes(ctx context.Context) ([]netip.Prefix, error) {
+	traceCFRangeCache.Lock()
+	defer traceCFRangeCache.Unlock()
+	if len(traceCFRangeCache.prefixes) > 0 && time.Now().Before(traceCFRangeCache.expiresAt) {
+		return append([]netip.Prefix(nil), traceCFRangeCache.prefixes...), nil
+	}
+	prefixes, err := loadCloudflareExclusionPrefixes(ctx)
+	if err != nil {
+		traceCFRangeCache.prefixes = nil
+		traceCFRangeCache.expiresAt = time.Time{}
+		return nil, fmt.Errorf("无法确认 Cloudflare 官方网段；为避免扫描官方地址，本机检测已停止：%w", err)
+	}
+	if len(prefixes) == 0 {
+		traceCFRangeCache.prefixes = nil
+		traceCFRangeCache.expiresAt = time.Time{}
+		return nil, fmt.Errorf("Cloudflare 官方网段清单为空；为避免扫描官方地址，本机检测已停止")
+	}
+	traceCFRangeCache.prefixes = append([]netip.Prefix(nil), prefixes...)
+	traceCFRangeCache.expiresAt = time.Now().Add(30 * time.Minute)
+	return append([]netip.Prefix(nil), prefixes...), nil
 }
 
 func traceIPInPrefixes(address netip.Addr, prefixes []netip.Prefix) bool {

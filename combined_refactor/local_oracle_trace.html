@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Oracle → 本机复测 · CFData</title>
+  <style>
+    :root { color-scheme:light dark; --bg:#0b1020; --panel:#121a2b; --line:#26344c; --text:#eef4ff; --muted:#9aabc4; --cyan:#66d9ef; --green:#54d39b; --red:#ff7c86; --gold:#f6c86d; }
+    * { box-sizing:border-box }
+    body { margin:0; background:radial-gradient(ellipse at 15% 0%,#153148 0,transparent 35%),var(--bg); color:var(--text); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(100% - 24px,980px); margin:22px auto 48px }
+    header { margin-bottom:18px }
+    .eyebrow { color:var(--cyan); font-size:12px; letter-spacing:.12em; font-weight:700 }
+    h1 { margin:6px 0; font-size:clamp(24px,5vw,34px); line-height:1.2 }
+    h2 { margin:0 0 8px; font-size:19px }
+    h3 { margin:18px 0 8px; font-size:15px }
+    p { margin:6px 0; color:var(--muted) }
+    a { color:var(--cyan) }
+    .card { border:1px solid var(--line); background:linear-gradient(155deg,rgba(18,26,43,.97),rgba(12,20,34,.97)); border-radius:16px; padding:18px; margin:14px 0; box-shadow:0 18px 50px #0003 }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px }
+    .grid.three { grid-template-columns:repeat(3,minmax(0,1fr)) }
+    label { display:block; color:#cfdbed; font-size:13px; font-weight:650; margin:0 0 6px }
+    input,textarea { width:100%; border:1px solid #34435a; border-radius:9px; background:#091221; color:var(--text); padding:10px 11px; font:inherit }
+    input:focus,textarea:focus { outline:2px solid #66d9ef55; border-color:var(--cyan) }
+    input[type=checkbox] { width:auto; accent-color:var(--cyan) }
+    .field { margin-top:13px }
+    .hint,.small { color:var(--muted); font-size:12px }
+    .actions { display:flex; flex-wrap:wrap; align-items:center; gap:9px; margin-top:14px }
+    button,.link { border:1px solid transparent; border-radius:9px; padding:10px 13px; color:#06131d; background:var(--cyan); font:700 13px system-ui,sans-serif; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; justify-content:center }
+    button.secondary,.link.secondary { background:#19263b; border-color:#35465f; color:var(--text) }
+    button.danger { background:#5b2530; border-color:#823745; color:#ffe5e8 }
+    button:disabled { opacity:.45; cursor:not-allowed }
+    .status { min-height:22px; color:var(--muted); font-size:13px }
+    .warning { border-left:3px solid var(--gold); padding:9px 12px; background:#f6c86d0d; color:#dac998; font-size:12px; margin-top:12px; border-radius:3px 8px 8px 3px }
+    .country-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(138px,1fr)); gap:6px; max-height:240px; overflow:auto; border:1px solid var(--line); border-radius:9px; padding:8px; margin-top:7px }
+    .country-list button { justify-content:flex-start; text-align:left; padding:7px 8px; font-size:12px; background:#19263b; border-color:#35465f; color:var(--text) }
+    .country-list button[aria-pressed=true] { background:#0b5260; border-color:var(--cyan) }
+    .summary { display:flex; flex-wrap:wrap; gap:7px; margin:10px 0 }
+    .pill { border:1px solid var(--line); border-radius:999px; padding:5px 9px; color:#c6d4e8; font-size:12px }
+    progress { width:100%; height:12px; accent-color:var(--cyan); margin:8px 0 2px }
+    .tablewrap { overflow:auto; border:1px solid var(--line); border-radius:10px; margin-top:10px }
+    table { width:100%; min-width:720px; border-collapse:collapse; font-size:12px }
+    th,td { padding:9px 10px; text-align:left; border-bottom:1px solid #26344c; vertical-align:top }
+    th { color:#9eb0ca; background:#0d1727; position:sticky; top:0 }
+    tr:last-child td { border-bottom:0 }
+    code { color:#d7e8ff; font:12px ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere }
+    .good { color:var(--green); font-weight:700 }
+    .bad { color:var(--red); font-weight:650 }
+    [hidden] { display:none !important }
+    @media(max-width:650px) { main{margin-top:14px}.card{padding:14px}.grid,.grid.three{grid-template-columns:1fr}.country-list{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))} }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">CFData Android · INTEGRATED TRACE</div>
+    <h1>Oracle 初筛 → 本机复测</h1>
+    <p>在 app 内读取 Oracle 地区目录；点一次开始后，Oracle 先按所选地区筛选，本机再自动逐条复测成功候选并显示结果。</p>
+    <div class="actions"><a class="link secondary" href="/">返回 CFData 主界面</a></div>
+  </header>
+
+  <section class="card">
+    <h2>连接 Oracle 并加载地区</h2>
+    <p class="small">使用现有 Oracle 网页账号登录。账号密码仅用于本次 HTTPS 登录；本机只在内存暂存会话，不写入配置或磁盘。连接后可选择 Oracle 的地区选项。</p>
+    <div class="grid field">
+      <div><label for="oracleUser">Oracle 网页账号</label><input id="oracleUser" autocomplete="off" spellcheck="false" maxlength="256"></div>
+      <div><label for="oraclePassword">Oracle 网页密码</label><input id="oraclePassword" type="password" autocomplete="new-password" maxlength="1024"></div>
+    </div>
+    <div class="actions">
+      <button id="connectOracle" type="button">登录并读取 Oracle 地区</button>
+      <span id="connectionStatus" class="status" role="status" aria-live="polite">尚未连接</span>
+    </div>
+  </section>
+
+  <section id="selectionCard" class="card" hidden>
+    <h2>筛选范围与复测上限</h2>
+    <div class="grid field">
+      <div><label for="domain">目标域名（TLS SNI 与 HTTP Host）</label><input id="domain" autocomplete="off" spellcheck="false" maxlength="253" placeholder="例如：example.com"></div>
+      <div><label for="countrySearch">搜索 Oracle 地区</label><input id="countrySearch" type="search" placeholder="输入代码或名称"></div>
+    </div>
+    <div class="actions">
+      <button id="selectCommon" class="secondary" type="button">常用 JP/HK/SG/TW</button>
+      <button id="selectAll" class="secondary" type="button">选择全部地区</button>
+      <button id="clearCountries" class="secondary" type="button">清空地区</button>
+      <span id="countryCount" class="status">等待地区目录</span>
+    </div>
+    <div id="countryList" class="country-list" aria-label="Oracle 国家和地区列表"></div>
+    <div class="grid three field">
+      <div><label for="perCountry">每地区最多候选</label><input id="perCountry" type="number" min="1" max="200" value="10"></div>
+      <div><label for="totalLimit">Oracle 候选总上限</label><input id="totalLimit" type="number" min="1" max="2000" value="500"></div>
+      <div><label for="localLimit">本机最多复测候选</label><input id="localLimit" type="number" min="1" max="2000" value="500"></div>
+    </div>
+    <p class="hint">本机复测最多 4 个并发请求、每次只处理一个候选；若 Oracle 成功候选多于本机上限，将按 Oracle 返回顺序复测前 N 个，并在结果中标注未复测数量。</p>
+    <div class="warning">本机检测使用 app 内 Go 扫描器，严格校验 TLS 证书、SNI 与 Host，并固定请求 <code>/cdn-cgi/trace</code>。扫描前会独立读取 Cloudflare 官方 IPv4/IPv6 网段并排除；官方网段清单缺失或异常时，本机检测会 fail closed。只会在你点击下面的“开始”后启动远端筛选，筛选结束后自动开始本机复测；可随时取消。</div>
+    <div class="actions">
+      <button id="startFlow" type="button" disabled>开始 Oracle 初筛并本机复测</button>
+      <button id="cancelFlow" class="danger" type="button" disabled>取消</button>
+      <span id="flowStatus" class="status" role="status" aria-live="polite">请先连接 Oracle 并选择地区</span>
+    </div>
+    <progress id="flowProgress" max="1" value="0"></progress>
+    <div id="flowSummary" class="summary"></div>
+  </section>
+
+  <section id="resultsCard" class="card" hidden>
+    <h2>候选与本机结果</h2>
+    <p id="candidateNote" class="small"></p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>候选 IP:端口</th><th>Oracle 地区</th><th>本机状态</th><th>本机耗时</th><th>Trace loc / colo</th><th>详细结果</th></tr></thead>
+        <tbody id="resultRows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const selectedCountries = new Set(['HK', 'JP', 'SG', 'TW']);
+  let countryCatalog = {};
+  let sessionID = '';
+  let running = false;
+  let cancelRequested = false;
+  let remoteCancelPromise = Promise.resolve();
+  const activeControllers = new Set();
+  let currentStatus = { phase: '', scanned: 0, total: 0 };
+
+  function makeController() { const controller = new AbortController(); activeControllers.add(controller); return controller; }
+  function releaseController(controller) { activeControllers.delete(controller); }
+  function abortAllControllers() { for (const controller of activeControllers) controller.abort(); activeControllers.clear(); }
+
+  function setStatus(id, message, bad = false) {
+    const el = $(id); el.textContent = message; el.className = bad ? 'status bad' : 'status';
+  }
+  function normalizeDomain(value) { return value.trim().toLowerCase().replace(/\.$/, ''); }
+  function selectedList() { return [...selectedCountries].filter(code => countryCatalog[code]).sort(); }
+  function updateSelection() {
+    const codes = selectedList();
+    $('countryCount').textContent = `${codes.length} 个地区已选 / ${Object.keys(countryCatalog).length} 个 Oracle 选项`;
+    $('startFlow').disabled = !sessionID || !codes.length || !normalizeDomain($('domain').value) || running;
+    const query = $('countrySearch').value.trim().toLowerCase();
+    for (const button of $('countryList').querySelectorAll('button[data-code]')) {
+      button.hidden = !button.textContent.toLowerCase().includes(query);
+      button.setAttribute('aria-pressed', selectedCountries.has(button.dataset.code) ? 'true' : 'false');
+    }
+  }
+  function renderCountries() {
+    const list = $('countryList'); list.replaceChildren();
+    for (const code of Object.keys(countryCatalog).sort()) {
+      const button = document.createElement('button'); button.type = 'button'; button.dataset.code = code;
+      button.textContent = `${code} · ${countryCatalog[code]}`;
+      button.setAttribute('aria-pressed', selectedCountries.has(code) ? 'true' : 'false');
+      button.addEventListener('click', () => {
+        if (selectedCountries.has(code)) selectedCountries.delete(code); else selectedCountries.add(code);
+        updateSelection();
+      });
+      list.append(button);
+    }
+    updateSelection();
+  }
+  async function localJSON(path, payload, signal) {
+    const response = await fetch(path, {
+      method: 'POST', credentials: 'same-origin', signal,
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(data.error || `本机接口返回 HTTP ${response.status}`);
+      error.status = response.status; throw error;
+    }
+    return data;
+  }
+  function clearResults() {
+    $('resultRows').replaceChildren(); $('flowSummary').replaceChildren();
+    $('resultsCard').hidden = true; $('flowProgress').value = 0;
+  }
+  function summaryPills(values) {
+    $('flowSummary').replaceChildren();
+    for (const value of values) { const pill = document.createElement('span'); pill.className = 'pill'; pill.textContent = value; $('flowSummary').append(pill); }
+  }
+  function addCandidateRow(candidate) {
+    const tr = document.createElement('tr');
+    const cell = value => { const td = document.createElement('td'); td.textContent = value || '—'; return td; };
+    tr.append(cell(candidate.candidate), cell([candidate.source_country, candidate.source_city].filter(Boolean).join(' · ')), cell('等待本机复测'), cell('—'), cell('—'), cell('—'));
+    $('resultRows').append(tr); return tr;
+  }
+  function setCandidateResult(row, result) {
+    const cells = row.children;
+    cells[2].textContent = result.ok ? '通过' : '未通过';
+    cells[2].className = result.ok ? 'good' : 'bad';
+    cells[3].textContent = `${result.elapsed_ms ?? '—'} ms`;
+    cells[4].textContent = [result.trace?.loc, result.trace?.colo].filter(Boolean).join(' / ') || '—';
+    cells[5].textContent = result.error || (result.ok ? `HTTP ${result.http_status || 200} · ${result.tls_version || 'TLS'}` : `HTTP ${result.http_status || '—'}`);
+  }
+  function setProgress(scanned, total) {
+    $('flowProgress').max = Math.max(total, 1); $('flowProgress').value = Math.min(scanned, total);
+    currentStatus.scanned = scanned; currentStatus.total = total;
+    setStatus('flowStatus', `本机复测 ${scanned}/${total}`);
+    summaryPills([`已复测 ${scanned}`, `总候选 ${total}`, `本机并发 4`]);
+  }
+  async function connectOracle() {
+    const user = $('oracleUser').value.trim();
+    const password = $('oraclePassword').value;
+    if (!user || !password) { setStatus('connectionStatus', '请填写 Oracle 网页账号和密码', true); return; }
+    $('connectOracle').disabled = true; setStatus('connectionStatus', '正在通过 HTTPS 登录 Oracle…');
+    $('oraclePassword').value = '';
+    try {
+      const login = await localJSON('/api/local/oracle/login', { username: user, password });
+      sessionID = login.session_id;
+      const catalog = await localJSON('/api/local/oracle/countries', { session_id: sessionID });
+      countryCatalog = catalog.countries || {};
+      if (!Object.keys(countryCatalog).length) throw new Error('Oracle 地区目录为空');
+      $('selectionCard').hidden = false;
+      renderCountries();
+      setStatus('connectionStatus', `已连接 Oracle，地区目录 ${Object.keys(countryCatalog).length} 项；会话仅保存在本机内存`);
+    } catch (error) {
+      if (sessionID) localJSON('/api/local/oracle/finish', { session_id: sessionID }).catch(() => {});
+      sessionID = ''; setStatus('connectionStatus', error.message || 'Oracle 登录/读取地区目录失败', true);
+    } finally {
+      $('oraclePassword').value = ''; $('connectOracle').disabled = false;
+    }
+  }
+  async function startFlow() {
+    if (running || !sessionID) return;
+    const domain = normalizeDomain($('domain').value);
+    const countries = selectedList();
+    const perCountry = Number($('perCountry').value);
+    const totalLimit = Number($('totalLimit').value);
+    const localLimit = Number($('localLimit').value);
+    if (!domain || !countries.length) { setStatus('flowStatus', '请填写目标域名并选择至少一个 Oracle 地区', true); return; }
+    if (!Number.isInteger(perCountry) || perCountry < 1 || perCountry > 200 || !Number.isInteger(totalLimit) || totalLimit < 1 || totalLimit > 2000 || !Number.isInteger(localLimit) || localLimit < 1 || localLimit > 2000) {
+      setStatus('flowStatus', '请检查数量限制：每地区 1–200，Oracle 总数和本机复测上限各为 1–2000', true); return;
+    }
+    running = true; cancelRequested = false; clearResults(); updateSelection();
+    remoteCancelPromise = Promise.resolve();
+    $('connectOracle').disabled = true; $('cancelFlow').disabled = false; $('startFlow').disabled = true;
+    currentStatus = { phase: 'Oracle筛选', scanned: 0, total: 0 };
+    setStatus('flowStatus', '正在向 Oracle 提交筛选任务…');
+    summaryPills([`地区 ${countries.length}`, `Oracle 上限 ${totalLimit}`, `本机上限 ${localLimit}`]);
+    try {
+      const controller = makeController();
+      await localJSON('/api/local/oracle/start', {
+        session_id: sessionID, domain, countries, per_country: perCountry,
+        total_limit: totalLimit, concurrency: 8
+      }, controller.signal).finally(() => releaseController(controller));
+      const finalStatus = await waitForOracle();
+      if (cancelRequested) throw new DOMException('用户取消', 'AbortError');
+      if (finalStatus.phase !== '完成') throw new Error(finalStatus.error || finalStatus.message || `Oracle 任务未完成（${finalStatus.phase || '未知状态'}）`);
+      const candidates = Array.isArray(finalStatus.candidates) ? finalStatus.candidates.filter(item => item && item.ok && typeof item.candidate === 'string') : [];
+      $('resultsCard').hidden = false;
+      if (!candidates.length) {
+        $('candidateNote').textContent = 'Oracle 已完成，但没有返回成功候选；本机没有启动扫描。';
+        setStatus('flowStatus', 'Oracle 筛选完成：没有成功候选，本机未扫描');
+        summaryPills(['Oracle 成功候选 0', '本机扫描 0']);
+        return;
+      }
+      const limit = Math.min(localLimit, candidates.length);
+      $('candidateNote').textContent = `Oracle 返回 ${candidates.length} 个成功候选；本机将复测 ${limit} 个${candidates.length > limit ? `，其余 ${candidates.length - limit} 个本轮不测` : ''}。官方网段仍会在本机扫描边界再次排除。`;
+      const rows = candidates.map(addCandidateRow);
+      for (let index = limit; index < rows.length; index++) {
+        rows[index].children[2].textContent = '超出本机上限，未测试';
+        rows[index].children[2].className = 'small';
+      }
+      if (candidates.length > limit) {
+        const note = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 6;
+        td.textContent = `未复测 ${candidates.length - limit} 个候选（超过设置的本机上限 ${localLimit}）`; note.append(td); $('resultRows').append(note);
+      }
+      setStatus('flowStatus', `Oracle 筛选完成，正在本机复测 ${limit} 个候选…`);
+      await runLocalChecks(candidates.slice(0, limit), rows, domain);
+      if (!cancelRequested) {
+        setStatus('flowStatus', '本机复测完成');
+        const successes = [...$('resultRows').querySelectorAll('tr')].filter(row => row.children.length === 6 && row.children[2].textContent === '通过').length;
+        summaryPills([`本机通过 ${successes}`, `本机已测 ${limit}`, `Oracle 成功候选 ${candidates.length}`]);
+      }
+    } catch (error) {
+      if (error.name === 'AbortError' || cancelRequested) setStatus('flowStatus', '已取消；已完成的本机结果保留');
+      else setStatus('flowStatus', error.message || '流程失败；请查看网络、Oracle 会话与官方网段清单状态', true);
+    } finally {
+      await remoteCancelPromise.catch(() => {});
+      if (sessionID) {
+        await localJSON('/api/local/oracle/finish', { session_id: sessionID }).catch(() => {});
+        sessionID = '';
+        setStatus('connectionStatus', '本轮 Oracle 会话已结束；重新连接后可再次运行');
+      }
+      abortAllControllers(); running = false; $('cancelFlow').disabled = true; $('connectOracle').disabled = false; updateSelection();
+    }
+  }
+  async function waitForOracle() {
+    while (!cancelRequested) {
+      const controller = makeController();
+      let status;
+      try { status = await localJSON('/api/local/oracle/status', { session_id: sessionID }, controller.signal); }
+      finally { releaseController(controller); }
+      if (!status.running) return status;
+      const total = Number(status.total) || 0, scanned = Number(status.scanned) || 0;
+      $('flowProgress').max = Math.max(total, 1); $('flowProgress').value = Math.min(scanned, total || 0);
+      setStatus('flowStatus', `Oracle ${status.phase || '筛选中'}：${status.message || ''}（${scanned}/${total}）`);
+      summaryPills([`Oracle 已检测 ${scanned}`, `候选 ${total}`, `成功 ${Number(status.success) || 0}`]);
+      await new Promise(resolve => setTimeout(resolve, 2500));
+    }
+    throw new DOMException('用户取消', 'AbortError');
+  }
+  async function runLocalChecks(candidates, rows, domain) {
+    let next = 0, completed = 0, fatalError = null;
+    const worker = async () => {
+      while (!cancelRequested && !fatalError) {
+        const index = next++;
+        if (index >= candidates.length) return;
+        try {
+          const controller = makeController();
+          let response;
+          try { response = await localJSON('/api/trace-check', { domain, candidates: [candidates[index].candidate] }, controller.signal); }
+          finally { releaseController(controller); }
+          const result = Array.isArray(response.results) ? response.results[0] : null;
+          if (!result) throw new Error('本机扫描器未返回此候选结果');
+          setCandidateResult(rows[index], result);
+          completed++;
+          setProgress(completed, candidates.length);
+        } catch (error) {
+          if (error.name === 'AbortError' || cancelRequested) return;
+          setCandidateResult(rows[index], { ok: false, error: error.message, elapsed_ms: 0 });
+          completed++; setProgress(completed, candidates.length);
+          if (error.status === 503 || /官方网段|排除清单/.test(error.message)) {
+            fatalError = new Error(`本机安全检查停止：${error.message}。官方网段数据不可用或异常，本轮后续候选均未扫描。`);
+            abortAllControllers();
+            return;
+          }
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, candidates.length) }, worker));
+    if (fatalError) throw fatalError;
+  }
+  async function cancelFlow() {
+    if (!running) return;
+    cancelRequested = true;
+    if (sessionID) remoteCancelPromise = localJSON('/api/local/oracle/cancel', { session_id: sessionID }).catch(() => {});
+    abortAllControllers();
+    $('cancelFlow').disabled = true;
+    setStatus('flowStatus', '正在取消 Oracle 任务和本机请求…');
+  }
+
+  $('connectOracle').addEventListener('click', connectOracle);
+  $('startFlow').addEventListener('click', startFlow);
+  $('cancelFlow').addEventListener('click', cancelFlow);
+  $('countrySearch').addEventListener('input', updateSelection);
+  $('domain').addEventListener('input', updateSelection);
+  $('selectCommon').addEventListener('click', () => { selectedCountries.clear(); for (const code of ['JP','HK','SG','TW']) if (countryCatalog[code]) selectedCountries.add(code); updateSelection(); });
+  $('selectAll').addEventListener('click', () => { for (const code of Object.keys(countryCatalog)) selectedCountries.add(code); updateSelection(); });
+  $('clearCountries').addEventListener('click', () => { selectedCountries.clear(); updateSelection(); });
+})();
+</script>
+</body>
+</html>

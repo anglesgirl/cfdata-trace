@@ -222,7 +222,8 @@ public class MainActivity extends Activity {
                 ProcessBuilder builder = new ProcessBuilder(
                         backend.getAbsolutePath(),
                         "-host", "127.0.0.1",
-                        "-port", String.valueOf(PORT)
+                        "-port", String.valueOf(PORT),
+                        "-localflow"
                 );
                 builder.directory(getFilesDir());
                 builder.redirectErrorStream(true);

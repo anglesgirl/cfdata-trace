@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,8 +17,9 @@ import (
 
 var webUser, webPassword string
 var traceOnlyWeb bool
+var localFlowEnabled bool
 var webSessionMinutes int
-var boolFlagNames = []string{"cli", "nsbtls", "progress", "nocolor", "compactipv4", "nsbcompact", "github", "skipgeo", "outv6bracket", "edgetunnel"}
+var boolFlagNames = []string{"cli", "nsbtls", "progress", "nocolor", "compactipv4", "nsbcompact", "github", "skipgeo", "outv6bracket", "edgetunnel", "localflow"}
 
 type latestReleaseInfo struct {
 	TagName string `json:"tag_name"`
@@ -155,9 +157,14 @@ func main() {
 	flag.StringVar(&webUser, "user", strings.TrimSpace(os.Getenv("CFDATA_WEB_USER")), "Web 认证用户名（不设置则不启用认证；也可用 CFDATA_WEB_USER 环境变量）")
 	flag.StringVar(&webPassword, "password", os.Getenv("CFDATA_WEB_PASSWORD"), "Web 认证密码（需同时设置用户名；也可用 CFDATA_WEB_PASSWORD 环境变量）")
 	flag.IntVar(&webSessionMinutes, "session", 720, "Web 登录会话有效期（分钟）")
+	flag.BoolVar(&localFlowEnabled, "localflow", false, "启用 Android 本机 Oracle→复测流程（仅允许 -host 127.0.0.1）")
 	flag.Parse()
 	traceOnlyWeb = strings.EqualFold(strings.TrimSpace(os.Getenv("CFDATA_TRACE_ONLY")), "true") || strings.TrimSpace(os.Getenv("CFDATA_TRACE_ONLY")) == "1"
 	traceRegionalOnly = traceOnlyWeb
+	if localFlowEnabled && (traceOnlyWeb || strings.TrimSpace(listenHost) != "127.0.0.1") {
+		fmt.Println("本机 Oracle 流程仅允许 Android app 使用 -host 127.0.0.1；服务未启动")
+		return
+	}
 	if traceOnlyWeb && (webUser == "" || webPassword == "") {
 		fmt.Println("Trace-only 模式必须设置 CFDATA_WEB_USER 与 CFDATA_WEB_PASSWORD；服务未启动")
 		return
@@ -261,6 +268,15 @@ func main() {
 	if !traceOnlyWeb {
 		http.HandleFunc("/api/trace-check", requireAuth(handleTraceCheck))
 	}
+	if localFlowEnabled {
+		http.HandleFunc("/oracle-local", requireAuth(handleLocalOraclePage))
+		http.HandleFunc(localOracleLoginPath, requireAuth(handleLocalOracleLogin))
+		http.HandleFunc(localOracleCountriesPath, requireAuth(handleLocalOracleCountries))
+		http.HandleFunc(localOracleStartPath, requireAuth(handleLocalOracleStart))
+		http.HandleFunc(localOracleStatusPath, requireAuth(handleLocalOracleStatus))
+		http.HandleFunc(localOracleCancelPath, requireAuth(handleLocalOracleCancel))
+		http.HandleFunc(localOracleFinishPath, requireAuth(handleLocalOracleFinish))
+	}
 	http.HandleFunc("/api/trace-sweep/start", requireAuth(handleTraceSweepStart))
 	http.HandleFunc("/api/trace-sweep/status", requireAuth(handleTraceSweepStatus))
 	http.HandleFunc("/api/trace-sweep/results", requireAuth(handleTraceSweepResults))
@@ -288,6 +304,11 @@ func main() {
 			http.Error(w, "无法加载页面", http.StatusInternalServerError)
 			return
 		}
+		link := []byte(`<a class="mode-btn" href="/oracle-local" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">🔗 Oracle → 本机复测</a>`)
+		if !localFlowEnabled {
+			link = nil
+		}
+		data = bytes.Replace(data, []byte("<!-- LOCAL_ORACLE_FLOW_LINK -->"), link, 1)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache")
 		_, _ = w.Write(data)

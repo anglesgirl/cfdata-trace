@@ -328,6 +328,16 @@ func validateTraceOrigin(r *http.Request) bool {
 }
 
 func handleTraceCheck(w http.ResponseWriter, r *http.Request) {
+	handleTraceCheckWithDeps(w, r, cachedCloudflareExclusionPrefixes, parseTraceCandidate, runTraceCheck)
+}
+
+func handleTraceCheckWithDeps(
+	w http.ResponseWriter,
+	r *http.Request,
+	loadPrefixes func(context.Context) ([]netip.Prefix, error),
+	parseCandidate func(string) (traceCandidate, error),
+	scan func(context.Context, traceCandidate, string) traceCheckResult,
+) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writeTraceJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -382,7 +392,7 @@ func handleTraceCheck(w http.ResponseWriter, r *http.Request) {
 	candidates := make([]traceCandidate, 0, len(payload.Candidates))
 	seen := make(map[string]struct{}, len(payload.Candidates))
 	for _, raw := range payload.Candidates {
-		candidate, err := parseTraceCandidate(raw)
+		candidate, err := parseCandidate(raw)
 		if err != nil {
 			writeTraceJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -393,13 +403,24 @@ func handleTraceCheck(w http.ResponseWriter, r *http.Request) {
 		seen[candidate.Canonical] = struct{}{}
 		candidates = append(candidates, candidate)
 	}
+	prefixes, err := loadPrefixes(r.Context())
+	if err != nil {
+		writeTraceJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		return
+	}
+	for _, candidate := range candidates {
+		if traceIPInPrefixes(candidate.Address, prefixes) {
+			writeTraceJSON(w, http.StatusBadRequest, map[string]string{"error": "候选位于 Cloudflare 官方网段；已在本机扫描前拒绝"})
+			return
+		}
+	}
 	results := make([]traceCheckResult, len(candidates))
 	var group sync.WaitGroup
 	for i, candidate := range candidates {
 		group.Add(1)
 		go func(i int, candidate traceCandidate) {
 			defer group.Done()
-			results[i] = runTraceCheck(r.Context(), candidate, domain)
+			results[i] = scan(r.Context(), candidate, domain)
 		}(i, candidate)
 	}
 	group.Wait()
