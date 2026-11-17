@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,17 +17,21 @@ import (
 )
 
 const (
-	localOracleOrigin        = "http://127.0.0.1:13335"
-	localOracleLoginPath     = "/api/local/oracle/login"
-	localOracleCountriesPath = "/api/local/oracle/countries"
-	localOracleStartPath     = "/api/local/oracle/start"
-	localOracleStatusPath    = "/api/local/oracle/status"
-	localOracleCancelPath    = "/api/local/oracle/cancel"
-	localOracleFinishPath    = "/api/local/oracle/finish"
-	localOracleMaxBody       = 32 << 10
-	localOracleMaxReplyBody  = 8 << 20
-	localOracleSessionTTL    = 45 * time.Minute
-	localOracleMaxSessions   = 4
+	localOracleOrigin             = "http://127.0.0.1:13335"
+	localOracleLoginPath          = "/api/local/oracle/login"
+	localOracleCountriesPath      = "/api/local/oracle/countries"
+	localOracleStartPath          = "/api/local/oracle/start"
+	localOracleStatusPath         = "/api/local/oracle/status"
+	localOracleCancelPath         = "/api/local/oracle/cancel"
+	localOracleFinishPath         = "/api/local/oracle/finish"
+	localOracleMaxBody            = 32 << 10
+	localOracleMaxReplyBody       = 8 << 20
+	localOracleReadAttemptTimeout = 15 * time.Second
+	localOracleReadRetryDelay     = 250 * time.Millisecond
+	localOracleReadMaxAttempts    = 2
+	localOracleReadTotalTimeout   = localOracleReadAttemptTimeout*localOracleReadMaxAttempts + localOracleReadRetryDelay
+	localOracleSessionTTL         = 45 * time.Minute
+	localOracleMaxSessions        = 4
 )
 
 var localOracleServiceURL = "https://cfdata-trace.anglesya.win"
@@ -113,7 +118,7 @@ func newLocalOracleHTTPClient() (*http.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("无法建立仅保存在内存中的 Oracle 登录会话")
 	}
-	client := *managementHTTPClient(15 * time.Second)
+	client := *managementHTTPClient(localOracleReadAttemptTimeout)
 	client.Jar = jar
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &client, nil
@@ -141,12 +146,18 @@ func doLocalOracleJSON(ctx context.Context, client *http.Client, method, path st
 		return 0, fmt.Errorf("连接 Oracle HTTPS 接口失败：%s", safeTraceError(err.Error()))
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, localOracleMaxReplyBody+1))
-	if err != nil || len(data) > localOracleMaxReplyBody {
-		return response.StatusCode, fmt.Errorf("Oracle 返回数据无法读取或超过 8 MiB 限制")
-	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return response.StatusCode, fmt.Errorf("Oracle 接口返回 HTTP %d；请检查账号权限、Oracle 任务状态或网络连接", response.StatusCode)
+	}
+	if response.ContentLength > localOracleMaxReplyBody {
+		return response.StatusCode, &localOracleResponseTooLargeError{path: path, size: response.ContentLength, declared: true}
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, localOracleMaxReplyBody+1))
+	if err != nil {
+		return response.StatusCode, &localOracleResponseReadError{path: path, bytesRead: int64(len(data)), cause: err}
+	}
+	if len(data) > localOracleMaxReplyBody {
+		return response.StatusCode, &localOracleResponseTooLargeError{path: path, size: int64(len(data))}
 	}
 	if target != nil {
 		if err := json.Unmarshal(data, target); err != nil {
@@ -154,6 +165,66 @@ func doLocalOracleJSON(ctx context.Context, client *http.Client, method, path st
 		}
 	}
 	return response.StatusCode, nil
+}
+
+type localOracleResponseReadError struct {
+	path      string
+	bytesRead int64
+	cause     error
+}
+
+func (e *localOracleResponseReadError) Error() string {
+	return fmt.Sprintf("读取 Oracle 接口 %s 的响应中断（已接收 %d 字节）：%s", e.path, e.bytesRead, safeTraceError(e.cause.Error()))
+}
+
+func (e *localOracleResponseReadError) Unwrap() error { return e.cause }
+
+type localOracleResponseTooLargeError struct {
+	path     string
+	size     int64
+	declared bool
+}
+
+func (e *localOracleResponseTooLargeError) Error() string {
+	if e.declared {
+		return fmt.Sprintf("Oracle 接口 %s 声明返回 %d 字节，超过 8 MiB 安全上限；未解析该响应", e.path, e.size)
+	}
+	return fmt.Sprintf("Oracle 接口 %s 响应至少已读取 %d 字节，超过 8 MiB 安全上限；未解析该响应", e.path, e.size)
+}
+
+func doLocalOracleJSONWithRetry(ctx context.Context, client *http.Client, method, path string, payload any, target any) (int, error) {
+	maxAttempts := 1
+	if method == http.MethodGet {
+		maxAttempts = localOracleReadMaxAttempts
+	}
+	var status int
+	var err error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		attemptContext, cancel := context.WithTimeout(ctx, localOracleReadAttemptTimeout)
+		status, err = doLocalOracleJSON(attemptContext, client, method, path, payload, target)
+		cancel()
+		if err == nil {
+			return status, nil
+		}
+		var readError *localOracleResponseReadError
+		if !errors.As(err, &readError) {
+			return status, err
+		}
+		if attempt+1 == maxAttempts {
+			if attempt > 0 {
+				return status, fmt.Errorf("%w（安全 GET 已重试 %d 次，仍失败）", err, attempt)
+			}
+			return status, err
+		}
+		timer := time.NewTimer(localOracleReadRetryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return status, fmt.Errorf("%w（重试未执行：%s）", err, safeTraceError(ctx.Err().Error()))
+		case <-timer.C:
+		}
+	}
+	return status, err
 }
 
 func createLocalOracleSession(client *http.Client) (string, error) {
@@ -338,9 +409,9 @@ func handleLocalOracleCountries(w http.ResponseWriter, r *http.Request) {
 	var response struct {
 		Countries map[string]string `json:"countries"`
 	}
-	requestContext, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	requestContext, cancel := context.WithTimeout(r.Context(), localOracleReadTotalTimeout)
 	defer cancel()
-	if _, err := doLocalOracleJSON(requestContext, session.client, http.MethodGet, "/api/trace-countries", nil, &response); err != nil {
+	if _, err := doLocalOracleJSONWithRetry(requestContext, session.client, http.MethodGet, "/api/trace-countries", nil, &response); err != nil {
 		writeTraceJSONError(w, http.StatusBadGateway, err.Error())
 		return
 	}
@@ -442,10 +513,11 @@ func handleLocalOracleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var status traceSweepSnapshot
-	requestContext, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	if _, err := doLocalOracleJSON(requestContext, session.client, http.MethodGet, "/api/trace-sweep/status", nil, &status); err != nil {
-		writeTraceJSONError(w, http.StatusBadGateway, err.Error())
+	statusContext, cancelStatus := context.WithTimeout(r.Context(), localOracleReadTotalTimeout)
+	_, statusErr := doLocalOracleJSONWithRetry(statusContext, session.client, http.MethodGet, "/api/trace-sweep/status", nil, &status)
+	cancelStatus()
+	if statusErr != nil {
+		writeTraceJSONError(w, http.StatusBadGateway, statusErr.Error())
 		return
 	}
 	if status.Domain != "" && status.Domain != session.domain {
@@ -471,8 +543,11 @@ func handleLocalOracleStatus(w http.ResponseWriter, r *http.Request) {
 	var resultPayload struct {
 		Results []traceCheckResult `json:"results"`
 	}
-	if _, err := doLocalOracleJSON(requestContext, session.client, http.MethodGet, "/api/trace-sweep/results", nil, &resultPayload); err != nil {
-		writeTraceJSONError(w, http.StatusBadGateway, err.Error())
+	resultsContext, cancelResults := context.WithTimeout(r.Context(), localOracleReadTotalTimeout)
+	_, resultsErr := doLocalOracleJSONWithRetry(resultsContext, session.client, http.MethodGet, "/api/trace-sweep/results", nil, &resultPayload)
+	cancelResults()
+	if resultsErr != nil {
+		writeTraceJSONError(w, http.StatusBadGateway, resultsErr.Error())
 		return
 	}
 	if len(resultPayload.Results) > traceSweepMaxTotalLimit {

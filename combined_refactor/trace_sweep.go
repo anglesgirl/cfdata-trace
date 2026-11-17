@@ -46,9 +46,9 @@ var (
 	traceCountryCodeRE   = regexp.MustCompile(`^[A-Z]{2}$`)
 	fofaAPIBaseURL       = "https://fofa.info"
 	fofaHTTPClient       = &http.Client{Timeout: traceSweepFOFATimeout}
-	proxyIPDataURL       = "https://raw.githubusercontent.com/NiREvil/vless/main/sub/ProxyIP-for-zizifn.json"
+	proxyIPDataURL       = "https://gh.anglesya.win/NiREvil/vless/raw/main/sub/ProxyIP-for-zizifn.json"
 	traceRegionalOnly    bool
-	publicIPHTTPClient   = &http.Client{Timeout: traceSweepPublicTimeout}
+	publicIPHTTPClient   *http.Client
 	traceCountryDataOnce sync.Once
 	traceCountryData     map[string]string
 	traceCountryDataErr  error
@@ -544,7 +544,11 @@ func fetchPublicProxyIPDataset(ctx context.Context) (proxyIPDataset, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "CFData-WEB-Trace/1.0")
-	resp, err := publicIPHTTPClient.Do(req)
+	client := publicIPHTTPClient
+	if client == nil {
+		client = managementHTTPClient(traceSweepPublicTimeout)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return proxyIPDataset{}, ctx.Err()

@@ -398,3 +398,38 @@ func TestTraceLocalAuthenticatedSmokeNoExternalIO(t *testing.T) {
 		t.Fatalf("empty CSV export failed: status=%d body=%q", csvRec.Code, csvRec.Body.String())
 	}
 }
+
+func TestFetchRegionalCandidateDatasetDefaultsToManagementClient(t *testing.T) {
+	const wantURL = "https://gh.anglesya.win/NiREvil/vless/raw/main/sub/ProxyIP-for-zizifn.json"
+	if proxyIPDataURL != wantURL {
+		t.Fatalf("proxyIPDataURL = %q, want mirror URL %q", proxyIPDataURL, wantURL)
+	}
+	oldURL, oldClient := proxyIPDataURL, publicIPHTTPClient
+	managementHTTPClientCache.Lock()
+	oldManagementClient := managementHTTPClientCache.client
+	managementHTTPClientCache.client = nil
+	managementHTTPClientCache.Unlock()
+	t.Cleanup(func() {
+		proxyIPDataURL, publicIPHTTPClient = oldURL, oldClient
+		managementHTTPClientCache.Lock()
+		managementHTTPClientCache.client = oldManagementClient
+		managementHTTPClientCache.Unlock()
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"updated_at":"2026-11-13T13:01:11Z","proxies":[{"ip":"198.51.100.1","port":443,"country":"JP"}]}`))
+	}))
+	defer server.Close()
+	proxyIPDataURL = server.URL
+	publicIPHTTPClient = nil
+	managementHTTPClientCache.Lock()
+	managementHTTPClientCache.client = server.Client()
+	managementHTTPClientCache.Unlock()
+	dataset, err := fetchPublicProxyIPDataset(t.Context())
+	if err != nil {
+		t.Fatalf("fetch using management client mock: %v", err)
+	}
+	if len(dataset.Proxies) != 1 || dataset.Proxies[0].IP != "198.51.100.1" {
+		t.Fatalf("unexpected mock dataset: %+v", dataset)
+	}
+}

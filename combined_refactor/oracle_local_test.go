@@ -246,3 +246,112 @@ func TestLocalOraclePageExposesExplicitStartAndCandidateLimitControls(t *testing
 		}
 	}
 }
+
+func TestLocalOracleJSONDistinguishesOversizeFromInterruptedRead(t *testing.T) {
+	oldURL := localOracleServiceURL
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/large":
+			_, _ = w.Write([]byte(strings.Repeat("x", localOracleMaxReplyBody+1)))
+		case "/truncated":
+			w.Header().Set("Content-Length", "10")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("abc"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	localOracleServiceURL = server.URL
+	t.Cleanup(func() { localOracleServiceURL = oldURL })
+
+	_, err := doLocalOracleJSON(t.Context(), server.Client(), http.MethodGet, "/large", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "超过 8 MiB 安全上限") || !strings.Contains(err.Error(), "/large") {
+		t.Fatalf("oversize response error = %v; want distinct 8 MiB limit error", err)
+	}
+	_, err = doLocalOracleJSON(t.Context(), server.Client(), http.MethodGet, "/truncated", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "响应中断") || !strings.Contains(err.Error(), "已接收 3 字节") || !strings.Contains(err.Error(), "/truncated") {
+		t.Fatalf("truncated response error = %v; want actionable read-interruption detail", err)
+	}
+}
+
+func TestLocalOracleJSONWithRetryRetriesOnlyIdempotentGETReadFailuresOnce(t *testing.T) {
+	oldURL := localOracleServiceURL
+	var getAttempts atomic.Int32
+	var postAttempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/get":
+			if getAttempts.Add(1) == 1 {
+				w.Header().Set("Content-Length", "10")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("abc"))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		case "/post":
+			postAttempts.Add(1)
+			w.Header().Set("Content-Length", "10")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("abc"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	localOracleServiceURL = server.URL
+	t.Cleanup(func() { localOracleServiceURL = oldURL })
+
+	var response struct {
+		OK bool `json:"ok"`
+	}
+	status, err := doLocalOracleJSONWithRetry(t.Context(), server.Client(), http.MethodGet, "/get", nil, &response)
+	if err != nil || status != http.StatusOK || !response.OK || getAttempts.Load() != 2 {
+		t.Fatalf("GET status=%d response=%+v attempts=%d err=%v; want one retry and success", status, response, getAttempts.Load(), err)
+	}
+	_, err = doLocalOracleJSONWithRetry(t.Context(), server.Client(), http.MethodPost, "/post", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "响应中断") || postAttempts.Load() != 1 {
+		t.Fatalf("POST attempts=%d err=%v; want one attempt and no retry", postAttempts.Load(), err)
+	}
+}
+
+func TestLocalOracleJSONAcceptsExactly8MiB(t *testing.T) {
+	oldURL := localOracleServiceURL
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", localOracleMaxReplyBody)))
+	}))
+	defer server.Close()
+	localOracleServiceURL = server.URL
+	t.Cleanup(func() { localOracleServiceURL = oldURL })
+	if _, err := doLocalOracleJSON(t.Context(), server.Client(), http.MethodGet, "/exact", nil, nil); err != nil {
+		t.Fatalf("exactly 8 MiB response should fit the limit: %v", err)
+	}
+}
+
+func TestLocalOracleJSONCapsUnknownLengthResponse(t *testing.T) {
+	oldURL := localOracleServiceURL
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Error("mock server does not support flushing")
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+		chunk := []byte(strings.Repeat("x", 1<<20))
+		for i := 0; i < 9; i++ {
+			if _, err := w.Write(chunk); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}))
+	defer server.Close()
+	localOracleServiceURL = server.URL
+	t.Cleanup(func() { localOracleServiceURL = oldURL })
+	_, err := doLocalOracleJSON(t.Context(), server.Client(), http.MethodGet, "/chunked", nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "至少已读取 8388609 字节") || !strings.Contains(err.Error(), "超过 8 MiB 安全上限") {
+		t.Fatalf("chunked response error = %v; want bounded 8 MiB error", err)
+	}
+}
