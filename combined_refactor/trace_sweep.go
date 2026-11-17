@@ -45,10 +45,9 @@ var (
 	traceCountryCodeRE   = regexp.MustCompile(`^[A-Z]{2}$`)
 	fofaAPIBaseURL       = "https://fofa.info"
 	fofaHTTPClient       = &http.Client{Timeout: traceSweepFOFATimeout}
-	proxyIPDataURL       = "https://raw.githubusercontent.com/NiREvil/vless/main/sub/ProxyIP-for-zizifn.json"
+	proxyIPDataURL       = "https://gh.anglesya.win/NiREvil/vless/raw/main/sub/ProxyIP-for-zizifn.json"
 	traceRegionalOnly    bool
 	publicIPHTTPClient   = &http.Client{Timeout: traceSweepPublicTimeout}
-	cfRangeHTTPClient    = &http.Client{Timeout: traceSweepCFRangeTimeout}
 	traceCountryDataOnce sync.Once
 	traceCountryData     map[string]string
 	traceCountryDataErr  error
@@ -712,6 +711,7 @@ func buildFOFAQuery(country string, port int) string {
 }
 
 func loadCloudflareExclusionPrefixes(ctx context.Context) ([]netip.Prefix, error) {
+	client := cloudflareRangeHTTPClient()
 	urls := []string{"https://www.cloudflare.com/ips-v4", "https://www.cloudflare.com/ips-v6"}
 	prefixes := make([]netip.Prefix, 0, 24)
 	counts := [2]int{}
@@ -720,7 +720,7 @@ func loadCloudflareExclusionPrefixes(ctx context.Context) ([]netip.Prefix, error
 		if err != nil {
 			return nil, fmt.Errorf("无法创建官方网段排除清单请求")
 		}
-		resp, err := cfRangeHTTPClient.Do(req)
+		resp, err := client.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
@@ -749,6 +749,11 @@ func loadCloudflareExclusionPrefixes(ctx context.Context) ([]netip.Prefix, error
 		return nil, fmt.Errorf("Cloudflare 官方网段排除清单不完整；本次停止")
 	}
 	return prefixes, nil
+}
+
+// cloudflareRangeHTTPClient reuses the app's DNS-aware, TLS-verifying management transport.
+func cloudflareRangeHTTPClient() *http.Client {
+	return managementHTTPClient(traceSweepCFRangeTimeout)
 }
 
 func traceIPInPrefixes(address netip.Addr, prefixes []netip.Prefix) bool {
