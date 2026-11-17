@@ -46,17 +46,35 @@ jobs:
         run: go build -trimpath -o ../app/src/main/jniLibs/arm64-v8a/libcfdata.so .
       - name: Assemble debug APK
         run: gradle assembleDebug --no-daemon
-      - name: Verify debug APK and embedded arm64 backend
+      - name: Verify test package, debug signature, and embedded arm64 backend
         shell: bash
         run: |
           set -euo pipefail
           apk="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$apk"
           unzip -l "$apk" | grep -F 'lib/arm64-v8a/libcfdata.so'
+          application_id="$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          test "$application_id" = "com.cfdata.web.test"
+          signature="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$apk")"
+          printf '%s\n' "$signature" | grep -F 'CN=Android Debug'
+          signer_sha256="$(printf '%s\n' "$signature" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          test -n "$signer_sha256"
+          apk_sha256="$(sha256sum "$apk" | cut -d ' ' -f 1)"
+          apk_size="$(wc -c < "$apk" | tr -d ' ')"
+          metadata="app/build/outputs/apk/debug/apk-verification.txt"
+          {
+            printf 'application_id=%s\n' "$application_id"
+            printf 'signer=Android Debug\n'
+            printf 'signer_certificate_sha256=%s\n' "$signer_sha256"
+            printf 'apk_sha256=%s\n' "$apk_sha256"
+            printf 'apk_size_bytes=%s\n' "$apk_size"
+          } | tee "$metadata"
       - name: Upload the APK test artifact
         uses: actions/upload-artifact@v7
         with:
           name: cfdata-oracle-local-flow-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/apk-verification.txt
           if-no-files-found: error
           retention-days: 3
