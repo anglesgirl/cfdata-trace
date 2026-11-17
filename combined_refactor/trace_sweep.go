@@ -49,7 +49,6 @@ var (
 	proxyIPDataURL       = "https://raw.githubusercontent.com/NiREvil/vless/main/sub/ProxyIP-for-zizifn.json"
 	traceRegionalOnly    bool
 	publicIPHTTPClient   = &http.Client{Timeout: traceSweepPublicTimeout}
-	cfRangeHTTPClient    = &http.Client{Timeout: traceSweepCFRangeTimeout}
 	traceCountryDataOnce sync.Once
 	traceCountryData     map[string]string
 	traceCountryDataErr  error
@@ -718,8 +717,13 @@ func buildFOFAQuery(country string, port int) string {
 }
 
 func loadCloudflareExclusionPrefixes(ctx context.Context) ([]netip.Prefix, error) {
-	return loadCloudflareExclusionPrefixesFrom(ctx, cfRangeHTTPClient,
+	return loadCloudflareExclusionPrefixesFrom(ctx, cloudflareRangeHTTPClient(),
 		"https://www.cloudflare.com/ips-v4", "https://www.cloudflare.com/ips-v6", traceSweepCFRangeAPIURL)
+}
+
+// cloudflareRangeHTTPClient reuses the app's DNS-aware, TLS-verifying management transport.
+func cloudflareRangeHTTPClient() *http.Client {
+	return managementHTTPClient(traceSweepCFRangeTimeout)
 }
 
 func loadCloudflareExclusionPrefixesFrom(ctx context.Context, client *http.Client, ipv4URL, ipv6URL, apiURL string) ([]netip.Prefix, error) {

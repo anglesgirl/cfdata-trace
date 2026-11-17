@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -14,6 +15,30 @@ import (
 )
 
 const mockCloudflareRanges = `{"success":true,"result":{"ipv4_cidrs":["1.1.1.0/24"],"ipv6_cidrs":["2606:4700::/32"]}}`
+
+func TestCloudflareRangeHTTPClientUsesDNSAwareStrictTLSClient(t *testing.T) {
+	if managementProxyConfigured() {
+		t.Skip("management proxy replaces the direct DNS-aware dialer")
+	}
+	client := cloudflareRangeHTTPClient()
+	if client.Timeout != traceSweepCFRangeTimeout {
+		t.Fatalf("range client timeout=%s, want %s", client.Timeout, traceSweepCFRangeTimeout)
+	}
+	debugTransport, ok := client.Transport.(debugRoundTripper)
+	if !ok {
+		t.Fatalf("range client transport type=%T, want debugRoundTripper", client.Transport)
+	}
+	transport, ok := debugTransport.next.(*http.Transport)
+	if !ok {
+		t.Fatalf("range client underlying transport type=%T, want *http.Transport", debugTransport.next)
+	}
+	if got, want := reflect.ValueOf(transport.DialContext).Pointer(), reflect.ValueOf(dialContext).Pointer(); got != want {
+		t.Fatalf("range client does not use the app DNS fallback dialer (got %x, want %x)", got, want)
+	}
+	if transport.TLSClientConfig == nil || transport.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("range client must retain normal TLS certificate and hostname verification")
+	}
+}
 
 func TestCloudflareRangeLoaderFallsBackToOfficialAPIOnHTTP503(t *testing.T) {
 	var apiCalled atomic.Bool
