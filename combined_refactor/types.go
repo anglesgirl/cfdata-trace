@@ -35,7 +35,7 @@ const (
 )
 
 var (
-	//go:embed index.html login.html trace.html local_oracle_trace.html trace_countries.json favicon.png
+	//go:embed index.html login.html trace.html local_oracle_trace.html local_flow_counters.js trace_countries.json favicon.png
 	staticFiles     embed.FS
 	customDNSServer string
 	customDNSForced bool

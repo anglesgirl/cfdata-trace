@@ -255,6 +255,24 @@ func handleLocalOraclePage(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(page)
 }
 
+func handleLocalFlowCountersJS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || r.URL.Path != "/local-flow-counters.js" {
+		w.Header().Set("Allow", http.MethodGet)
+		http.NotFound(w, r)
+		return
+	}
+	script, err := staticFiles.ReadFile("local_flow_counters.js")
+	if err != nil {
+		http.Error(w, "无法加载本机复测计数器", http.StatusInternalServerError)
+		return
+	}
+	setTraceSecurityHeaders(w)
+	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(script)
+}
+
 func handleLocalOracleLogin(w http.ResponseWriter, r *http.Request) {
 	if !localOracleRequest(w, r, localOracleLoginPath) {
 		return

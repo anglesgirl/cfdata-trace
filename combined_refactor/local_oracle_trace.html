@@ -113,6 +113,7 @@
     </div>
   </section>
 </main>
+<script src="/local-flow-counters.js"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
@@ -123,7 +124,7 @@
   let cancelRequested = false;
   let remoteCancelPromise = Promise.resolve();
   const activeControllers = new Set();
-  let currentStatus = { phase: '', scanned: 0, total: 0 };
+  let localCounters = null;
 
   function makeController() { const controller = new AbortController(); activeControllers.add(controller); return controller; }
   function releaseController(controller) { activeControllers.delete(controller); }
@@ -192,11 +193,19 @@
     cells[4].textContent = [result.trace?.loc, result.trace?.colo].filter(Boolean).join(' / ') || '—';
     cells[5].textContent = result.error || (result.ok ? `HTTP ${result.http_status || 200} · ${result.tls_version || 'TLS'}` : `HTTP ${result.http_status || '—'}`);
   }
-  function setProgress(scanned, total) {
-    $('flowProgress').max = Math.max(total, 1); $('flowProgress').value = Math.min(scanned, total);
-    currentStatus.scanned = scanned; currentStatus.total = total;
-    setStatus('flowStatus', `本机复测 ${scanned}/${total}`);
-    summaryPills([`已复测 ${scanned}`, `总候选 ${total}`, `本机并发 4`]);
+  function renderLocalCounters() {
+    if (!localCounters) return;
+    const counts = localCounters.snapshot();
+    $('flowProgress').max = Math.max(counts.limit, 1);
+    $('flowProgress').value = counts.verified;
+    summaryPills([
+      `Oracle 候选 ${counts.total}`,
+      `本机复测请求已发起 ${counts.attempted}`,
+      `请求中 ${counts.inFlight}`,
+      `已收到复测结果 ${counts.verified}`,
+      `未扫描 ${counts.notScanned}`,
+      `状态未明 ${counts.unknown}`
+    ]);
   }
   async function connectOracle() {
     const user = $('oracleUser').value.trim();
@@ -234,7 +243,6 @@
     running = true; cancelRequested = false; clearResults(); updateSelection();
     remoteCancelPromise = Promise.resolve();
     $('connectOracle').disabled = true; $('cancelFlow').disabled = false; $('startFlow').disabled = true;
-    currentStatus = { phase: 'Oracle筛选', scanned: 0, total: 0 };
     setStatus('flowStatus', '正在向 Oracle 提交筛选任务…');
     summaryPills([`地区 ${countries.length}`, `Oracle 上限 ${totalLimit}`, `本机上限 ${localLimit}`]);
     try {
@@ -251,26 +259,52 @@
       if (!candidates.length) {
         $('candidateNote').textContent = 'Oracle 已完成，但没有返回成功候选；本机没有启动扫描。';
         setStatus('flowStatus', 'Oracle 筛选完成：没有成功候选，本机未扫描');
-        summaryPills(['Oracle 成功候选 0', '本机扫描 0']);
+        localCounters = LocalFlowCounters.create(0, 0); renderLocalCounters();
         return;
       }
       const limit = Math.min(localLimit, candidates.length);
+      localCounters = LocalFlowCounters.create(candidates.length, limit);
       $('candidateNote').textContent = `Oracle 返回 ${candidates.length} 个成功候选；本机将复测 ${limit} 个${candidates.length > limit ? `，其余 ${candidates.length - limit} 个本轮不测` : ''}。官方网段仍会在本机扫描边界再次排除。`;
       const rows = candidates.map(addCandidateRow);
       for (let index = limit; index < rows.length; index++) {
-        rows[index].children[2].textContent = '超出本机上限，未测试';
+        rows[index].children[2].textContent = '未扫描（超过本机上限）';
         rows[index].children[2].className = 'small';
       }
       if (candidates.length > limit) {
         const note = document.createElement('tr'); const td = document.createElement('td'); td.colSpan = 6;
         td.textContent = `未复测 ${candidates.length - limit} 个候选（超过设置的本机上限 ${localLimit}）`; note.append(td); $('resultRows').append(note);
       }
+      renderLocalCounters();
+      setStatus('flowStatus', '正在本机预检 Cloudflare 官方 IPv4/IPv6 排除清单…');
+      const preflightController = makeController();
+      let preflight;
+      try {
+        preflight = await localJSON('/api/trace-check/preflight', {}, preflightController.signal);
+        if (!preflight.ready || !preflight.ipv4 || !preflight.ipv6 || !(Number(preflight.prefix_count) > 0)) {
+          throw new Error('本机预检未确认有效的官方 IPv4/IPv6 排除清单');
+        }
+      } catch (error) {
+        if (error.name === 'AbortError' || cancelRequested) throw error;
+        for (let index = 0; index < limit; index++) {
+          rows[index].children[2].textContent = '未扫描（官方网段预检失败）';
+          rows[index].children[2].className = 'bad';
+          rows[index].children[5].textContent = error.message || '官方网段清单不可用或无效';
+        }
+        renderLocalCounters();
+        setStatus('flowStatus', `本机官方网段预检失败；扫描请求已发起 0 个，${candidates.length} 个 Oracle 候选均未扫描。详情：${error.message || '官方清单不可用或无效'}`, true);
+        return;
+      } finally {
+        releaseController(preflightController);
+      }
+      if (cancelRequested) throw new DOMException('用户取消', 'AbortError');
       setStatus('flowStatus', `Oracle 筛选完成，正在本机复测 ${limit} 个候选…`);
       await runLocalChecks(candidates.slice(0, limit), rows, domain);
       if (!cancelRequested) {
-        setStatus('flowStatus', '本机复测完成');
+        const counts = localCounters.snapshot();
+        setStatus('flowStatus', `本机流程结束：已收结果 ${counts.verified}，未扫描 ${counts.notScanned}，状态未明 ${counts.unknown}`);
         const successes = [...$('resultRows').querySelectorAll('tr')].filter(row => row.children.length === 6 && row.children[2].textContent === '通过').length;
-        summaryPills([`本机通过 ${successes}`, `本机已测 ${limit}`, `Oracle 成功候选 ${candidates.length}`]);
+        renderLocalCounters();
+        summaryPills([`Oracle 候选 ${counts.total}`, `本机复测请求已发起 ${counts.attempted}`, `请求中 ${counts.inFlight}`, `已收到复测结果 ${counts.verified}`, `本机通过 ${successes}`, `未扫描 ${counts.notScanned}`, `状态未明 ${counts.unknown}`]);
       }
     } catch (error) {
       if (error.name === 'AbortError' || cancelRequested) setStatus('flowStatus', '已取消；已完成的本机结果保留');
@@ -301,30 +335,43 @@
     throw new DOMException('用户取消', 'AbortError');
   }
   async function runLocalChecks(candidates, rows, domain) {
-    let next = 0, completed = 0, fatalError = null;
+    let next = 0, fatalError = null;
     const worker = async () => {
       while (!cancelRequested && !fatalError) {
         const index = next++;
         if (index >= candidates.length) return;
+        if (!localCounters.begin(index)) return;
+        rows[index].children[2].textContent = '请求中';
+        rows[index].children[2].className = '';
+        renderLocalCounters();
+        const controller = makeController();
         try {
-          const controller = makeController();
-          let response;
-          try { response = await localJSON('/api/trace-check', { domain, candidates: [candidates[index].candidate] }, controller.signal); }
-          finally { releaseController(controller); }
+          const response = await localJSON('/api/trace-check', { domain, candidates: [candidates[index].candidate] }, controller.signal);
           const result = Array.isArray(response.results) ? response.results[0] : null;
           if (!result) throw new Error('本机扫描器未返回此候选结果');
+          if (!localCounters.verified(index)) throw new Error('复测计数状态异常：候选不在请求中');
           setCandidateResult(rows[index], result);
-          completed++;
-          setProgress(completed, candidates.length);
         } catch (error) {
-          if (error.name === 'AbortError' || cancelRequested) return;
-          setCandidateResult(rows[index], { ok: false, error: error.message, elapsed_ms: 0 });
-          completed++; setProgress(completed, candidates.length);
           if (error.status === 503 || /官方网段|排除清单/.test(error.message)) {
+            localCounters.notScanned(index);
+            rows[index].children[2].textContent = '未扫描（官方网段检查拒绝）';
+            rows[index].children[2].className = 'bad';
+            rows[index].children[5].textContent = error.message;
             fatalError = new Error(`本机安全检查停止：${error.message}。官方网段数据不可用或异常，本轮后续候选均未扫描。`);
-            abortAllControllers();
-            return;
+          } else if (error.name === 'AbortError' || cancelRequested) {
+            localCounters.unknown(index);
+            rows[index].children[2].textContent = '状态未明（请求已中断）';
+            rows[index].children[2].className = 'small';
+            rows[index].children[5].textContent = '请求中断后无法确认本机扫描器是否已收到请求';
+          } else {
+            localCounters.unknown(index);
+            rows[index].children[2].textContent = '状态未明（未收到完整结果）';
+            rows[index].children[2].className = 'bad';
+            rows[index].children[5].textContent = error.message || '请求失败，无法确认扫描器是否已执行';
           }
+        } finally {
+          releaseController(controller);
+          renderLocalCounters();
         }
       }
     };

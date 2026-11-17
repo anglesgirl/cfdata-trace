@@ -39,6 +39,7 @@ const (
 	traceSweepPublicTimeout      = 25 * time.Second
 	traceSweepCFRangeTimeout     = 10 * time.Second
 	traceSweepCFRangeMaxBody     = 16 << 10
+	traceSweepCFRangeAPIURL      = "https://api.cloudflare.com/client/v4/ips"
 )
 
 var (
@@ -717,61 +718,160 @@ func buildFOFAQuery(country string, port int) string {
 }
 
 func loadCloudflareExclusionPrefixes(ctx context.Context) ([]netip.Prefix, error) {
-	urls := []string{"https://www.cloudflare.com/ips-v4", "https://www.cloudflare.com/ips-v6"}
-	prefixes := make([]netip.Prefix, 0, 24)
-	counts := [2]int{}
-	for i, endpoint := range urls {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		if err != nil {
-			return nil, fmt.Errorf("无法创建官方网段排除清单请求")
-		}
-		resp, err := cfRangeHTTPClient.Do(req)
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			return nil, fmt.Errorf("无法读取 Cloudflare 官方网段排除清单；为避免误测官方段，本次停止")
-		}
-		body, readErr := io.ReadAll(io.LimitReader(resp.Body, traceSweepCFRangeMaxBody+1))
-		resp.Body.Close()
-		if readErr != nil || resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices || len(body) > traceSweepCFRangeMaxBody {
-			return nil, fmt.Errorf("Cloudflare 官方网段排除清单无效；为避免误测官方段，本次停止")
-		}
-		for _, line := range strings.Fields(string(body)) {
-			prefix, err := netip.ParsePrefix(line)
-			if err != nil {
-				return nil, fmt.Errorf("Cloudflare 官方网段排除清单含无效 CIDR；本次停止")
-			}
-			prefix = prefix.Masked()
-			if !isTracePublicIP(prefix.Addr()) || (i == 0 && !prefix.Addr().Is4()) || (i == 1 && !prefix.Addr().Is6()) {
-				return nil, fmt.Errorf("Cloudflare 官方网段排除清单地址族或地址范围异常；本次停止")
-			}
-			prefixes = append(prefixes, prefix)
-			counts[i]++
-		}
+	return loadCloudflareExclusionPrefixesFrom(ctx, cfRangeHTTPClient,
+		"https://www.cloudflare.com/ips-v4", "https://www.cloudflare.com/ips-v6", traceSweepCFRangeAPIURL)
+}
+
+func loadCloudflareExclusionPrefixesFrom(ctx context.Context, client *http.Client, ipv4URL, ipv6URL, apiURL string) ([]netip.Prefix, error) {
+	textPrefixes, textErr := loadCloudflareTextRanges(ctx, client, ipv4URL, ipv6URL)
+	if textErr == nil {
+		return textPrefixes, nil
 	}
-	if counts[0] == 0 || counts[1] == 0 {
-		return nil, fmt.Errorf("Cloudflare 官方网段排除清单不完整；本次停止")
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	apiPrefixes, apiErr := loadCloudflareAPIRanges(ctx, client, apiURL)
+	if apiErr == nil {
+		return apiPrefixes, nil
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	return nil, fmt.Errorf("无法确认 Cloudflare 官方 IPv4/IPv6 排除清单；文本端点失败：%v；官方 API 备用源失败：%v。为避免误测官方段，本次停止", textErr, apiErr)
+}
+
+func loadCloudflareTextRanges(ctx context.Context, client *http.Client, ipv4URL, ipv6URL string) ([]netip.Prefix, error) {
+	ipv4Body, err := fetchCloudflareRangeBody(ctx, client, ipv4URL)
+	if err != nil {
+		return nil, fmt.Errorf("IPv4 文本清单：%w", err)
+	}
+	ipv6Body, err := fetchCloudflareRangeBody(ctx, client, ipv6URL)
+	if err != nil {
+		return nil, fmt.Errorf("IPv6 文本清单：%w", err)
+	}
+	prefixes, err := parseCloudflareRangeLists(strings.Fields(string(ipv4Body)), strings.Fields(string(ipv6Body)))
+	if err != nil {
+		return nil, fmt.Errorf("文本清单校验失败：%w", err)
 	}
 	return prefixes, nil
+}
+
+func loadCloudflareAPIRanges(ctx context.Context, client *http.Client, endpoint string) ([]netip.Prefix, error) {
+	body, err := fetchCloudflareRangeBody(ctx, client, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	var response struct {
+		Success bool `json:"success"`
+		Result  struct {
+			IPv4CIDRs []string `json:"ipv4_cidrs"`
+			IPv6CIDRs []string `json:"ipv6_cidrs"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(body, &response); err != nil {
+		return nil, fmt.Errorf("官方 API JSON 格式无效：%w", err)
+	}
+	if !response.Success {
+		return nil, fmt.Errorf("官方 API 未返回 success=true")
+	}
+	prefixes, err := parseCloudflareRangeLists(response.Result.IPv4CIDRs, response.Result.IPv6CIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("官方 API 网段校验失败：%w", err)
+	}
+	return prefixes, nil
+}
+
+func fetchCloudflareRangeBody(ctx context.Context, client *http.Client, endpoint string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("无法创建请求：%w", err)
+	}
+	req.Header.Set("Accept", "text/plain, application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fmt.Errorf("请求失败：%w", err)
+	}
+	defer resp.Body.Close()
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, traceSweepCFRangeMaxBody+1))
+	if readErr != nil {
+		return nil, fmt.Errorf("读取响应失败：%w", readErr)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	if len(body) > traceSweepCFRangeMaxBody {
+		return nil, fmt.Errorf("响应超过 %d 字节限制", traceSweepCFRangeMaxBody)
+	}
+	return body, nil
+}
+
+func parseCloudflareRangeLists(ipv4, ipv6 []string) ([]netip.Prefix, error) {
+	if len(ipv4) == 0 || len(ipv6) == 0 {
+		return nil, fmt.Errorf("IPv4 或 IPv6 清单为空")
+	}
+	prefixes := make([]netip.Prefix, 0, len(ipv4)+len(ipv6))
+	for _, group := range []struct {
+		name   string
+		values []string
+		isIPv4 bool
+	}{{"IPv4", ipv4, true}, {"IPv6", ipv6, false}} {
+		for _, value := range group.values {
+			prefix, err := netip.ParsePrefix(strings.TrimSpace(value))
+			if err != nil {
+				return nil, fmt.Errorf("%s 清单含无效 CIDR %q", group.name, value)
+			}
+			prefix = prefix.Masked()
+			if prefix.Addr().Is4() != group.isIPv4 || !isTracePublicIP(prefix.Addr()) {
+				return nil, fmt.Errorf("%s 清单地址族或地址范围异常：%s", group.name, prefix)
+			}
+			prefixes = append(prefixes, prefix)
+		}
+	}
+	return prefixes, nil
+}
+
+func validateCloudflareExclusionPrefixes(prefixes []netip.Prefix) error {
+	if len(prefixes) == 0 {
+		return fmt.Errorf("Cloudflare 官方网段清单为空")
+	}
+	hasIPv4, hasIPv6 := false, false
+	for _, prefix := range prefixes {
+		if !prefix.IsValid() || !isTracePublicIP(prefix.Addr()) {
+			return fmt.Errorf("Cloudflare 官方网段清单含无效或非公网范围")
+		}
+		if prefix.Addr().Is4() {
+			hasIPv4 = true
+		} else {
+			hasIPv6 = true
+		}
+	}
+	if !hasIPv4 || !hasIPv6 {
+		return fmt.Errorf("Cloudflare 官方 IPv4/IPv6 网段清单不完整")
+	}
+	return nil
 }
 
 func cachedCloudflareExclusionPrefixes(ctx context.Context) ([]netip.Prefix, error) {
 	traceCFRangeCache.Lock()
 	defer traceCFRangeCache.Unlock()
 	if len(traceCFRangeCache.prefixes) > 0 && time.Now().Before(traceCFRangeCache.expiresAt) {
-		return append([]netip.Prefix(nil), traceCFRangeCache.prefixes...), nil
+		if err := validateCloudflareExclusionPrefixes(traceCFRangeCache.prefixes); err == nil {
+			return append([]netip.Prefix(nil), traceCFRangeCache.prefixes...), nil
+		}
+		traceCFRangeCache.prefixes = nil
+		traceCFRangeCache.expiresAt = time.Time{}
 	}
 	prefixes, err := loadCloudflareExclusionPrefixes(ctx)
+	if err == nil {
+		err = validateCloudflareExclusionPrefixes(prefixes)
+	}
 	if err != nil {
 		traceCFRangeCache.prefixes = nil
 		traceCFRangeCache.expiresAt = time.Time{}
 		return nil, fmt.Errorf("无法确认 Cloudflare 官方网段；为避免扫描官方地址，本机检测已停止：%w", err)
-	}
-	if len(prefixes) == 0 {
-		traceCFRangeCache.prefixes = nil
-		traceCFRangeCache.expiresAt = time.Time{}
-		return nil, fmt.Errorf("Cloudflare 官方网段清单为空；为避免扫描官方地址，本机检测已停止")
 	}
 	traceCFRangeCache.prefixes = append([]netip.Prefix(nil), prefixes...)
 	traceCFRangeCache.expiresAt = time.Now().Add(30 * time.Minute)

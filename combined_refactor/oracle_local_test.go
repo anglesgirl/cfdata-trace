@@ -240,7 +240,7 @@ func TestLocalOraclePageExposesExplicitStartAndCandidateLimitControls(t *testing
 		t.Fatalf("read embedded local Oracle page: %v", err)
 	}
 	text := string(page)
-	for _, required := range []string{"登录并读取 Oracle 地区", "开始 Oracle 初筛并本机复测", "本机最多复测候选", "取消", "/api/local/oracle/start", "/api/trace-check", "官方网段清单"} {
+	for _, required := range []string{"登录并读取 Oracle 地区", "开始 Oracle 初筛并本机复测", "本机最多复测候选", "取消", "/api/local/oracle/start", "/api/trace-check/preflight", "/api/trace-check", "LocalFlowCounters.create", "本机复测请求已发起", "请求中", "已收到复测结果", "未扫描", "状态未明", "官方网段清单"} {
 		if !strings.Contains(text, required) {
 			t.Errorf("local flow page missing %q", required)
 		}

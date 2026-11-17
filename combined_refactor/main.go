@@ -269,6 +269,8 @@ func main() {
 		http.HandleFunc("/api/trace-check", requireAuth(handleTraceCheck))
 	}
 	if localFlowEnabled {
+		http.HandleFunc("/api/trace-check/preflight", requireAuth(handleTraceCheckPreflight))
+		http.HandleFunc("/local-flow-counters.js", requireAuth(handleLocalFlowCountersJS))
 		http.HandleFunc("/oracle-local", requireAuth(handleLocalOraclePage))
 		http.HandleFunc(localOracleLoginPath, requireAuth(handleLocalOracleLogin))
 		http.HandleFunc(localOracleCountriesPath, requireAuth(handleLocalOracleCountries))

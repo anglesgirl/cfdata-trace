@@ -327,6 +327,40 @@ func validateTraceOrigin(r *http.Request) bool {
 	return strings.EqualFold(parsed.Host, r.Host)
 }
 
+func handleTraceCheckPreflight(w http.ResponseWriter, r *http.Request) {
+	handleTraceCheckPreflightWithLoader(w, r, cachedCloudflareExclusionPrefixes)
+}
+
+func handleTraceCheckPreflightWithLoader(w http.ResponseWriter, r *http.Request, loadPrefixes func(context.Context) ([]netip.Prefix, error)) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		writeTraceJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if r.URL.Path != "/api/trace-check/preflight" {
+		writeTraceJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	if !validateTraceOrigin(r) {
+		writeTraceJSON(w, http.StatusForbidden, map[string]string{"error": "cross-origin request denied"})
+		return
+	}
+	if contentType := strings.ToLower(strings.TrimSpace(strings.Split(r.Header.Get("Content-Type"), ";")[0])); contentType != "application/json" {
+		writeTraceJSON(w, http.StatusUnsupportedMediaType, map[string]string{"error": "Content-Type must be application/json"})
+		return
+	}
+	prefixes, err := loadPrefixes(r.Context())
+	if err != nil {
+		writeTraceJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		return
+	}
+	if err := validateCloudflareExclusionPrefixes(prefixes); err != nil {
+		writeTraceJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		return
+	}
+	writeTraceJSON(w, http.StatusOK, map[string]any{"ready": true, "prefix_count": len(prefixes), "ipv4": true, "ipv6": true})
+}
+
 func handleTraceCheck(w http.ResponseWriter, r *http.Request) {
 	handleTraceCheckWithDeps(w, r, cachedCloudflareExclusionPrefixes, parseTraceCandidate, runTraceCheck)
 }
