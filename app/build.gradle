@@ -7,6 +7,15 @@ android {
     compileSdk 35
 
     signingConfigs {
+        // 测试包固定签名：CI 每次构建都用同一个 debug keystore，
+        // 否则每台 Runner 现生成的 debug 密钥都不同，新包无法覆盖安装旧包。
+        // 这只是 debug 测试密钥（与默认 debug 密钥同等性质），不是发布密钥。
+        debug {
+            storeFile file("debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
+        }
         release {
             def storeFilePath = System.getenv("ANDROID_KEYSTORE_FILE")
             if (storeFilePath) {
@@ -29,6 +38,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix ".test"
+            signingConfig signingConfigs.debug
         }
         release {
             signingConfig signingConfigs.release
