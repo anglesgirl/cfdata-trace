@@ -328,7 +328,32 @@ func validateTraceOrigin(r *http.Request) bool {
 }
 
 func handleTraceCheckPreflight(w http.ResponseWriter, r *http.Request) {
-	handleTraceCheckPreflightWithLoader(w, r, cachedCloudflareExclusionPrefixes)
+	handleTraceCheckPreflightWithOracle(w, r, cachedCloudflareExclusionPrefixes)
+}
+
+// handleTraceCheckPreflightWithOracle 优先走 Oracle 服务端下好的官方网段清单
+// （本机到 Oracle 的会话是通的），Oracle 不可用时回落到本机直连 cloudflare.com。
+func handleTraceCheckPreflightWithOracle(w http.ResponseWriter, r *http.Request, directLoader func(context.Context) ([]netip.Prefix, error)) {
+	sessionID := ""
+	if r.Body != nil {
+		var payload struct {
+			SessionID string `json:"session_id"`
+		}
+		body, err := io.ReadAll(io.LimitReader(r.Body, 32<<10))
+		if err == nil {
+			_ = json.Unmarshal(body, &payload)
+			sessionID = strings.TrimSpace(payload.SessionID)
+		}
+	}
+	loader := func(ctx context.Context) ([]netip.Prefix, error) {
+		if sessionID != "" {
+			if prefixes, err := loadCloudflareExclusionPrefixesViaOracle(ctx, sessionID); err == nil {
+				return prefixes, nil
+			}
+		}
+		return directLoader(ctx)
+	}
+	handleTraceCheckPreflightWithLoader(w, r, loader)
 }
 
 func handleTraceCheckPreflightWithLoader(w http.ResponseWriter, r *http.Request, loadPrefixes func(context.Context) ([]netip.Prefix, error)) {

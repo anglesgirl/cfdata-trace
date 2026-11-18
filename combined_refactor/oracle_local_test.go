@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func localOracleRequestForTest(method, path, body string) *http.Request {
@@ -266,8 +267,8 @@ func TestLocalOracleJSONDistinguishesOversizeFromInterruptedRead(t *testing.T) {
 	t.Cleanup(func() { localOracleServiceURL = oldURL })
 
 	_, err := doLocalOracleJSON(t.Context(), server.Client(), http.MethodGet, "/large", nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "超过 8 MiB 安全上限") || !strings.Contains(err.Error(), "/large") {
-		t.Fatalf("oversize response error = %v; want distinct 8 MiB limit error", err)
+	if err == nil || !strings.Contains(err.Error(), "超过 32 MiB 安全上限") || !strings.Contains(err.Error(), "/large") {
+		t.Fatalf("oversize response error = %v; want distinct 32 MiB limit error", err)
 	}
 	_, err = doLocalOracleJSON(t.Context(), server.Client(), http.MethodGet, "/truncated", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "响应中断") || !strings.Contains(err.Error(), "已接收 3 字节") || !strings.Contains(err.Error(), "/truncated") {
@@ -316,7 +317,7 @@ func TestLocalOracleJSONWithRetryRetriesOnlyIdempotentGETReadFailuresOnce(t *tes
 	}
 }
 
-func TestLocalOracleJSONAcceptsExactly8MiB(t *testing.T) {
+func TestLocalOracleJSONAcceptsExactly32MiB(t *testing.T) {
 	oldURL := localOracleServiceURL
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(strings.Repeat("x", localOracleMaxReplyBody)))
@@ -325,7 +326,7 @@ func TestLocalOracleJSONAcceptsExactly8MiB(t *testing.T) {
 	localOracleServiceURL = server.URL
 	t.Cleanup(func() { localOracleServiceURL = oldURL })
 	if _, err := doLocalOracleJSON(t.Context(), server.Client(), http.MethodGet, "/exact", nil, nil); err != nil {
-		t.Fatalf("exactly 8 MiB response should fit the limit: %v", err)
+		t.Fatalf("exactly 32 MiB response should fit the limit: %v", err)
 	}
 }
 
@@ -340,7 +341,7 @@ func TestLocalOracleJSONCapsUnknownLengthResponse(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		flusher.Flush()
 		chunk := []byte(strings.Repeat("x", 1<<20))
-		for i := 0; i < 9; i++ {
+		for i := 0; i < 33; i++ {
 			if _, err := w.Write(chunk); err != nil {
 				return
 			}
@@ -351,7 +352,90 @@ func TestLocalOracleJSONCapsUnknownLengthResponse(t *testing.T) {
 	localOracleServiceURL = server.URL
 	t.Cleanup(func() { localOracleServiceURL = oldURL })
 	_, err := doLocalOracleJSON(t.Context(), server.Client(), http.MethodGet, "/chunked", nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "至少已读取 8388609 字节") || !strings.Contains(err.Error(), "超过 8 MiB 安全上限") {
-		t.Fatalf("chunked response error = %v; want bounded 8 MiB error", err)
+	if err == nil || !strings.Contains(err.Error(), "至少已读取 33554433 字节") || !strings.Contains(err.Error(), "超过 32 MiB 安全上限") {
+		t.Fatalf("chunked response error = %v; want bounded 32 MiB error", err)
+	}
+}
+
+func TestTraceCheckPreflightPrefersOracleExclusions(t *testing.T) {
+	oldURL := localOracleServiceURL
+	oracle := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/trace-sweep/exclusions" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"prefixes":["1.1.1.0/24","2606:4700::/32"],"prefix_count":2}`))
+	}))
+	defer oracle.Close()
+	localOracleServiceURL = oracle.URL
+	const sessionToken = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	localOracleSessions.Lock()
+	oldSessions := localOracleSessions.items
+	localOracleSessions.items = map[string]*localOracleSession{
+		sessionToken: {client: oracle.Client(), expiresAt: time.Now().Add(time.Hour)},
+	}
+	localOracleSessions.Unlock()
+	t.Cleanup(func() {
+		localOracleServiceURL = oldURL
+		localOracleSessions.Lock()
+		localOracleSessions.items = oldSessions
+		localOracleSessions.Unlock()
+	})
+
+	var directCalled atomic.Bool
+	directLoader := func(context.Context) ([]netip.Prefix, error) {
+		directCalled.Store(true)
+		return nil, fmt.Errorf("direct fetch must not run when Oracle answers")
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/trace-check/preflight", strings.NewReader(`{"session_id":"`+sessionToken+`"}`))
+	req.Host = "127.0.0.1:13335"
+	req.Header.Set("Origin", localOracleOrigin)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handleTraceCheckPreflightWithOracle(rec, req, directLoader)
+	if rec.Code != http.StatusOK || directCalled.Load() {
+		t.Fatalf("preflight status=%d directCalled=%v body=%s; want Oracle prefixes without direct fetch", rec.Code, directCalled.Load(), rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"prefix_count":2`) {
+		t.Fatalf("preflight body missing Oracle prefix count: %s", rec.Body.String())
+	}
+}
+
+func TestTraceCheckPreflightFallsBackToDirectRangesWhenOracleFails(t *testing.T) {
+	oldURL := localOracleServiceURL
+	oracle := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer oracle.Close()
+	localOracleServiceURL = oracle.URL
+	const sessionToken = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	localOracleSessions.Lock()
+	oldSessions := localOracleSessions.items
+	localOracleSessions.items = map[string]*localOracleSession{
+		sessionToken: {client: oracle.Client(), expiresAt: time.Now().Add(time.Hour)},
+	}
+	localOracleSessions.Unlock()
+	t.Cleanup(func() {
+		localOracleServiceURL = oldURL
+		localOracleSessions.Lock()
+		localOracleSessions.items = oldSessions
+		localOracleSessions.Unlock()
+	})
+
+	directLoader := func(context.Context) ([]netip.Prefix, error) {
+		return []netip.Prefix{
+			netip.MustParsePrefix("1.1.1.0/24"),
+			netip.MustParsePrefix("2606:4700::/32"),
+		}, nil
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/trace-check/preflight", strings.NewReader(`{"session_id":"`+sessionToken+`"}`))
+	req.Host = "127.0.0.1:13335"
+	req.Header.Set("Origin", localOracleOrigin)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handleTraceCheckPreflightWithOracle(rec, req, directLoader)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"prefix_count":2`) {
+		t.Fatalf("preflight fallback status=%d body=%s; want direct ranges", rec.Code, rec.Body.String())
 	}
 }

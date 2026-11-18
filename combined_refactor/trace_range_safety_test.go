@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -217,5 +218,41 @@ func TestFourConcurrentTraceChecksCanceledDuringRangeLoadNeverCallScanner(t *tes
 	}
 	if got := scans.Load(); got != 0 {
 		t.Fatalf("scanner called %d times after four concurrent range-load cancellations; want zero", got)
+	}
+}
+
+func TestTraceSweepExclusionsReturnsCachedPrefixes(t *testing.T) {
+	loader := func(context.Context) ([]netip.Prefix, error) {
+		return []netip.Prefix{
+			netip.MustParsePrefix("1.1.1.0/24"),
+			netip.MustParsePrefix("2606:4700::/32"),
+		}, nil
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/trace-sweep/exclusions", nil)
+	req.Host = "checker.example"
+	rec := httptest.NewRecorder()
+	handleTraceSweepExclusionsWithLoader(rec, req, loader)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("exclusions status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Prefixes []string `json:"prefixes"`
+		IPv4     []string `json:"ipv4"`
+		IPv6     []string `json:"ipv6"`
+		Count    int      `json:"prefix_count"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode exclusions response: %v", err)
+	}
+	if response.Count != 2 || len(response.IPv4) != 1 || len(response.IPv6) != 1 {
+		t.Fatalf("exclusions response = %+v; want 1 IPv4 and 1 IPv6 prefix", response)
+	}
+
+	postReq := httptest.NewRequest(http.MethodPost, "/api/trace-sweep/exclusions", nil)
+	postReq.Host = "checker.example"
+	postRec := httptest.NewRecorder()
+	handleTraceSweepExclusionsWithLoader(postRec, postReq, loader)
+	if postRec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("exclusions POST status=%d, want %d", postRec.Code, http.StatusMethodNotAllowed)
 	}
 }

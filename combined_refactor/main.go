@@ -181,6 +181,11 @@ func main() {
 			customDNSForced = true
 		}
 	})
+	// Android 本机流程：手机系统 DNS 常为不可用的本地桩（[::1]:53 拒绝连接），
+	// 本机 Go 进程直接走配置好的 DNS（默认 223.5.5.5,8.8.8.8），不再先试系统 DNS。
+	if localFlowEnabled {
+		customDNSForced = true
+	}
 	printBanner()
 	enterMenu := false
 	if cliCfg.enabled {
@@ -282,6 +287,7 @@ func main() {
 	http.HandleFunc("/api/trace-sweep/start", requireAuth(handleTraceSweepStart))
 	http.HandleFunc("/api/trace-sweep/status", requireAuth(handleTraceSweepStatus))
 	http.HandleFunc("/api/trace-sweep/results", requireAuth(handleTraceSweepResults))
+	http.HandleFunc("/api/trace-sweep/exclusions", requireAuth(handleTraceSweepExclusions))
 	http.HandleFunc("/api/trace-sweep/stop", requireAuth(handleTraceSweepStop))
 	http.HandleFunc("/api/trace-sweep/export", requireAuth(handleTraceSweepExport))
 

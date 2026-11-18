@@ -25,7 +25,7 @@ const (
 	localOracleCancelPath         = "/api/local/oracle/cancel"
 	localOracleFinishPath         = "/api/local/oracle/finish"
 	localOracleMaxBody            = 32 << 10
-	localOracleMaxReplyBody       = 8 << 20
+	localOracleMaxReplyBody       = 32 << 20
 	localOracleReadAttemptTimeout = 15 * time.Second
 	localOracleReadRetryDelay     = 250 * time.Millisecond
 	localOracleReadMaxAttempts    = 2
@@ -186,10 +186,11 @@ type localOracleResponseTooLargeError struct {
 }
 
 func (e *localOracleResponseTooLargeError) Error() string {
+	limitMiB := localOracleMaxReplyBody >> 20
 	if e.declared {
-		return fmt.Sprintf("Oracle 接口 %s 声明返回 %d 字节，超过 8 MiB 安全上限；未解析该响应", e.path, e.size)
+		return fmt.Sprintf("Oracle 接口 %s 声明返回 %d 字节，超过 %d MiB 安全上限；未解析该响应", e.path, e.size, limitMiB)
 	}
-	return fmt.Sprintf("Oracle 接口 %s 响应至少已读取 %d 字节，超过 8 MiB 安全上限；未解析该响应", e.path, e.size)
+	return fmt.Sprintf("Oracle 接口 %s 响应至少已读取 %d 字节，超过 %d MiB 安全上限；未解析该响应", e.path, e.size, limitMiB)
 }
 
 func doLocalOracleJSONWithRetry(ctx context.Context, client *http.Client, method, path string, payload any, target any) (int, error) {
@@ -495,6 +496,34 @@ func handleLocalOracleStart(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// loadCloudflareExclusionPrefixesViaOracle 从 Oracle 服务取官方网段清单。
+// 本机直接拉 cloudflare.com 常死在手机系统 DNS（[::1]:53 拒绝连接），
+// 而到 Oracle 的会话通道是通的，且服务端本来就要下载这份清单来排除。
+func loadCloudflareExclusionPrefixesViaOracle(ctx context.Context, sessionID string) ([]netip.Prefix, error) {
+	session, ok := getLocalOracleSession(sessionID)
+	if !ok {
+		return nil, errors.New("Oracle 登录会话已失效")
+	}
+	var response struct {
+		Prefixes []string `json:"prefixes"`
+	}
+	if _, err := doLocalOracleJSONWithRetry(ctx, session.client, http.MethodGet, "/api/trace-sweep/exclusions", nil, &response); err != nil {
+		return nil, err
+	}
+	prefixes := make([]netip.Prefix, 0, len(response.Prefixes))
+	for _, text := range response.Prefixes {
+		prefix, err := netip.ParsePrefix(strings.TrimSpace(text))
+		if err != nil {
+			return nil, fmt.Errorf("Oracle 返回的官方网段格式无效：%s", text)
+		}
+		prefixes = append(prefixes, prefix)
+	}
+	if err := validateCloudflareExclusionPrefixes(prefixes); err != nil {
+		return nil, err
+	}
+	return prefixes, nil
+}
+
 func handleLocalOracleStatus(w http.ResponseWriter, r *http.Request) {
 	if !localOracleRequest(w, r, localOracleStatusPath) {
 		return
@@ -544,7 +573,7 @@ func handleLocalOracleStatus(w http.ResponseWriter, r *http.Request) {
 		Results []traceCheckResult `json:"results"`
 	}
 	resultsContext, cancelResults := context.WithTimeout(r.Context(), localOracleReadTotalTimeout)
-	_, resultsErr := doLocalOracleJSONWithRetry(resultsContext, session.client, http.MethodGet, "/api/trace-sweep/results", nil, &resultPayload)
+	_, resultsErr := doLocalOracleJSONWithRetry(resultsContext, session.client, http.MethodGet, "/api/trace-sweep/results?compact=1", nil, &resultPayload)
 	cancelResults()
 	if resultsErr != nil {
 		writeTraceJSONError(w, http.StatusBadGateway, resultsErr.Error())

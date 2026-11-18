@@ -351,7 +351,73 @@ func handleTraceSweepResults(w http.ResponseWriter, r *http.Request) {
 	traceSweepState.RUnlock()
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if r.URL.Query().Get("compact") == "1" {
+		compact := make([]traceCheckResultCompact, 0, len(results))
+		for _, result := range results {
+			compact = append(compact, traceCheckResultCompact{
+				Candidate: result.Candidate, Source: result.Source,
+				SourceCountry: result.SourceCountry, SourceCity: result.SourceCity,
+				SourceRegion: result.SourceRegion, SourceISP: result.SourceISP,
+				SourceRisk: result.SourceRisk, SourceScore: result.SourceScore, OK: result.OK,
+			})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": compact})
+		return
+	}
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
+}
+
+// traceCheckResultCompact 只保留本机复测需要的字段：候选地址与来源信息。
+// Trace 详情、TLS 版本、耗时等由本机扫描器重新测出，不随 Oracle 结果下发，
+// 避免 2,000 条候选的完整结果把响应撑到数 MiB。
+type traceCheckResultCompact struct {
+	Candidate     string `json:"candidate"`
+	Source        string `json:"source,omitempty"`
+	SourceCountry string `json:"source_country,omitempty"`
+	SourceCity    string `json:"source_city,omitempty"`
+	SourceRegion  string `json:"source_region,omitempty"`
+	SourceISP     string `json:"source_isp,omitempty"`
+	SourceRisk    string `json:"source_risk,omitempty"`
+	SourceScore   int    `json:"source_score,omitempty"`
+	OK            bool   `json:"ok"`
+}
+
+func handleTraceSweepExclusions(w http.ResponseWriter, r *http.Request) {
+	handleTraceSweepExclusionsWithLoader(w, r, cachedCloudflareExclusionPrefixes)
+}
+
+func handleTraceSweepExclusionsWithLoader(w http.ResponseWriter, r *http.Request, loadPrefixes func(context.Context) ([]netip.Prefix, error)) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeTraceJSONError(w, http.StatusMethodNotAllowed, "仅支持 GET")
+		return
+	}
+	prefixes, err := loadPrefixes(r.Context())
+	if err != nil {
+		writeTraceJSONError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	if err := validateCloudflareExclusionPrefixes(prefixes); err != nil {
+		writeTraceJSONError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	ipv4 := []string{}
+	ipv6 := []string{}
+	all := make([]string, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		text := prefix.String()
+		all = append(all, text)
+		if prefix.Addr().Is4() {
+			ipv4 = append(ipv4, text)
+		} else {
+			ipv6 = append(ipv6, text)
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"prefixes": all, "ipv4": ipv4, "ipv6": ipv6, "prefix_count": len(all),
+	})
 }
 
 func handleTraceSweepStop(w http.ResponseWriter, r *http.Request) {

@@ -433,3 +433,37 @@ func TestFetchRegionalCandidateDatasetDefaultsToManagementClient(t *testing.T) {
 		t.Fatalf("unexpected mock dataset: %+v", dataset)
 	}
 }
+
+func TestTraceSweepResultsCompactDropsTraceDetail(t *testing.T) {
+	traceSweepState.Lock()
+	oldResults := traceSweepState.results
+	traceSweepState.results = []traceCheckResult{{
+		Candidate: "203.0.113.7:443", Source: "regional", SourceCountry: "JP", SourceCity: "Tokyo",
+		OK: true, HTTPStatus: 200, TLSVersion: "TLS 1.3",
+		Trace:     map[string]string{"loc": "JP", "colo": "NRT", "ip": "203.0.113.7"},
+		ElapsedMS: 42,
+	}}
+	traceSweepState.Unlock()
+	t.Cleanup(func() {
+		traceSweepState.Lock()
+		traceSweepState.results = oldResults
+		traceSweepState.Unlock()
+	})
+
+	fullReq := httptest.NewRequest(http.MethodGet, "/api/trace-sweep/results", nil)
+	fullReq.Host = "checker.example"
+	fullRec := httptest.NewRecorder()
+	handleTraceSweepResults(fullRec, fullReq)
+	if fullRec.Code != http.StatusOK || !strings.Contains(fullRec.Body.String(), `"colo":"NRT"`) {
+		t.Fatalf("full results missing trace detail: status=%d body=%s", fullRec.Code, fullRec.Body.String())
+	}
+
+	compactReq := httptest.NewRequest(http.MethodGet, "/api/trace-sweep/results?compact=1", nil)
+	compactReq.Host = "checker.example"
+	compactRec := httptest.NewRecorder()
+	handleTraceSweepResults(compactRec, compactReq)
+	body := compactRec.Body.String()
+	if compactRec.Code != http.StatusOK || !strings.Contains(body, `"candidate":"203.0.113.7:443"`) || strings.Contains(body, "colo") || strings.Contains(body, "tls_version") {
+		t.Fatalf("compact results wrong: status=%d body=%s", compactRec.Code, body)
+	}
+}

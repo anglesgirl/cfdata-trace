@@ -279,7 +279,7 @@
       const preflightController = makeController();
       let preflight;
       try {
-        preflight = await localJSON('/api/trace-check/preflight', {}, preflightController.signal);
+        preflight = await localJSON('/api/trace-check/preflight', { session_id: sessionID }, preflightController.signal);
         if (!preflight.ready || !preflight.ipv4 || !preflight.ipv6 || !(Number(preflight.prefix_count) > 0)) {
           throw new Error('本机预检未确认有效的官方 IPv4/IPv6 排除清单');
         }
