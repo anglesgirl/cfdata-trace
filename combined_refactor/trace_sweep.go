@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
@@ -36,7 +37,7 @@ const (
 	traceSweepFOFATimeout        = 20 * time.Second
 	traceSweepFOFAMaxBody        = 4 << 20
 	traceSweepPublicMaxBody      = 8 << 20
-	traceSweepPublicTimeout      = 25 * time.Second
+	traceSweepPublicTimeout      = 60 * time.Second
 	traceSweepCFRangeTimeout     = 10 * time.Second
 	traceSweepCFRangeMaxBody     = 16 << 10
 	traceSweepCFRangeAPIURL      = "https://api.cloudflare.com/client/v4/ips"
@@ -47,6 +48,13 @@ var (
 	fofaAPIBaseURL       = "https://fofa.info"
 	fofaHTTPClient       = &http.Client{Timeout: traceSweepFOFATimeout}
 	proxyIPDataURL       = "https://gh.anglesya.win/NiREvil/vless/raw/main/sub/ProxyIP-for-zizifn.json"
+	proxyIPDataOriginURL = "https://raw.githubusercontent.com/NiREvil/vless/main/sub/ProxyIP-for-zizifn.json"
+	// 内置快照：自家镜像与源站都拉不到时兜底用。清单只是粗筛候选源，
+	// 候选后续会逐个实测 TLS 与 /cdn-cgi/trace，旧一两天不影响结果；
+	// 正常情况永远先拉在线清单，只有网络失败才走快照。
+	//
+	//go:embed proxyip_snapshot.json
+	proxyIPSnapshotData  []byte
 	traceRegionalOnly    bool
 	publicIPHTTPClient   *http.Client
 	traceCountryDataOnce sync.Once
@@ -603,10 +611,43 @@ func runTraceSweep(ctx context.Context, source, domain string, countries []strin
 	return nil
 }
 
+// fetchPublicProxyIPDataset 按“自家镜像 → GitHub 源站 → 内置快照”取清单。
+// 之前只拉自家镜像，Oracle 服务器到镜像的读取一旦失败（超时/中断），
+// 整个初筛直接失败。候选后续会逐个实测，清单旧一点也能用，所以网络
+// 全断时改走内置快照，任务不再因为拉不到清单而失败。每一步失败都打
+// 到 stdout（Coolify 日志可见），下次再出问题不用猜。
 func fetchPublicProxyIPDataset(ctx context.Context) (proxyIPDataset, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, proxyIPDataURL, nil)
+	urls := []string{proxyIPDataURL, proxyIPDataOriginURL}
+	var lastErr error
+	for _, dataURL := range urls {
+		for attempt := 0; attempt < 2; attempt++ {
+			dataset, err := fetchProxyIPDatasetFromURL(ctx, dataURL)
+			if err == nil {
+				return dataset, nil
+			}
+			lastErr = err
+			fmt.Printf("[trace-sweep] 读取 NiREvil 清单失败（%s，第 %d 次）：%v\n", dataURL, attempt+1, err)
+			if attempt == 0 {
+				select {
+				case <-ctx.Done():
+					return proxyIPDataset{}, ctx.Err()
+				case <-time.After(2 * time.Second):
+				}
+			}
+		}
+	}
+	dataset, err := parseProxyIPDataset(proxyIPSnapshotData)
 	if err != nil {
-		return proxyIPDataset{}, fmt.Errorf("无法创建 NiREvil/VLESS 地区候选清单请求")
+		return proxyIPDataset{}, fmt.Errorf("NiREvil/VLESS 地区候选清单读取失败（镜像与源站均不可用，内置快照也无效：%v；最后一次网络错误：%v）", err, lastErr)
+	}
+	fmt.Printf("[trace-sweep] NiREvil 清单改用内置快照（更新于 %s，共 %d 条）；最后一次网络错误：%v\n", dataset.UpdatedAt, len(dataset.Proxies), lastErr)
+	return dataset, nil
+}
+
+func fetchProxyIPDatasetFromURL(ctx context.Context, dataURL string) (proxyIPDataset, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dataURL, nil)
+	if err != nil {
+		return proxyIPDataset{}, fmt.Errorf("无法创建 NiREvil/VLESS 地区候选清单请求：%w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "CFData-WEB-Trace/1.0")
@@ -619,22 +660,29 @@ func fetchPublicProxyIPDataset(ctx context.Context) (proxyIPDataset, error) {
 		if ctx.Err() != nil {
 			return proxyIPDataset{}, ctx.Err()
 		}
-		return proxyIPDataset{}, fmt.Errorf("读取 NiREvil/VLESS 地区候选清单失败：%s", safeTraceError(err.Error()))
+		return proxyIPDataset{}, fmt.Errorf("请求失败：%w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return proxyIPDataset{}, fmt.Errorf("NiREvil/VLESS 地区候选清单返回 HTTP %d", resp.StatusCode)
+		return proxyIPDataset{}, fmt.Errorf("返回 HTTP %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, traceSweepPublicMaxBody+1))
-	if err != nil || len(body) > traceSweepPublicMaxBody {
-		return proxyIPDataset{}, fmt.Errorf("NiREvil/VLESS 地区候选清单读取失败或超过大小限制")
+	if err != nil {
+		return proxyIPDataset{}, fmt.Errorf("读取响应失败（已读 %d 字节）：%w", len(body), err)
 	}
+	if len(body) > traceSweepPublicMaxBody {
+		return proxyIPDataset{}, fmt.Errorf("响应超过 %d MiB 上限（%d 字节）", traceSweepPublicMaxBody>>20, len(body))
+	}
+	return parseProxyIPDataset(body)
+}
+
+func parseProxyIPDataset(body []byte) (proxyIPDataset, error) {
 	var dataset proxyIPDataset
 	if err := json.Unmarshal(body, &dataset); err != nil || len(dataset.Proxies) == 0 || len(dataset.Proxies) > 100000 {
-		return proxyIPDataset{}, fmt.Errorf("NiREvil/VLESS 地区候选清单格式无效或记录数超限")
+		return proxyIPDataset{}, fmt.Errorf("格式无效或记录数超限（%d 条）", len(dataset.Proxies))
 	}
 	if _, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(dataset.UpdatedAt)); err != nil {
-		return proxyIPDataset{}, fmt.Errorf("NiREvil/VLESS 地区候选清单缺少有效更新时间")
+		return proxyIPDataset{}, fmt.Errorf("缺少有效更新时间")
 	}
 	return dataset, nil
 }

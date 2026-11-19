@@ -467,3 +467,25 @@ func TestTraceSweepResultsCompactDropsTraceDetail(t *testing.T) {
 		t.Fatalf("compact results wrong: status=%d body=%s", compactRec.Code, body)
 	}
 }
+
+func TestEmbeddedProxyIPSnapshotParses(t *testing.T) {
+	if len(proxyIPSnapshotData) == 0 {
+		t.Fatal("embedded proxyip_snapshot.json is empty")
+	}
+	dataset, err := parseProxyIPDataset(proxyIPSnapshotData)
+	if err != nil {
+		t.Fatalf("embedded snapshot does not parse: %v", err)
+	}
+	if len(dataset.Proxies) == 0 {
+		t.Fatal("embedded snapshot has no records")
+	}
+	jp := 0
+	for _, record := range dataset.Proxies {
+		if strings.ToUpper(strings.TrimSpace(record.Country)) == "JP" {
+			jp++
+		}
+	}
+	if jp == 0 {
+		t.Fatal("embedded snapshot has no JP records")
+	}
+}
