@@ -1685,7 +1685,8 @@
             <button class="mode-btn active" id="btnOfficial" onclick="switchMode('official')">☁️ 官方优选</button>
             <button class="mode-btn" id="btnNSB" onclick="switchMode('nsb')">📂 非标优选</button>
 			<a class="mode-btn" href="/trace" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">🔎 Trace 检测</a>
-			<!-- LOCAL_ORACLE_FLOW_LINK -->
+			<a class="mode-btn" id="localRetestLink" href="/oracle-local" style="display:none;align-items:center;justify-content:center;text-decoration:none;">📱 本机复测</a>
+			<script>(function(){var h=location.hostname;if(h==='127.0.0.1'||h==='localhost'){var el=document.getElementById('localRetestLink');if(el)el.style.display='flex';}})();</script>
         </div>
 
         <div class="section-box controls">

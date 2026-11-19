@@ -59,8 +59,9 @@
     <div class="eyebrow">CFData-WEB · Region Trace</div>
     <h1>地区候选 IP 初筛</h1>
     <p>按选定的 ISO 国家/地区读取 IP:端口候选，再由本服务直接连接候选地址，并以目标域名作为 TLS SNI 与 HTTP Host，请求固定的 <code>/cdn-cgi/trace</code>。</p>
-    <div class="actions"><a class="back" href="/auth/logout">退出登录</a></div>
+    <div class="actions"><a class="back" id="localRetestLink" href="/oracle-local" style="display:none">📱 本机复测</a><a class="back" href="/auth/logout">退出登录</a></div>
   </header>
+  <script>(function(){var h=location.hostname;if(h==='127.0.0.1'||h==='localhost'){var el=document.getElementById('localRetestLink');if(el)el.style.display='';}})();</script>
 
   <section class="card">
     <h2>公开区域名单与 Trace 初筛</h2>
