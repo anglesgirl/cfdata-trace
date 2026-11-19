@@ -48,7 +48,18 @@
     .good { color:var(--green); font-weight:700 }
     .bad { color:var(--red); font-weight:650 }
     [hidden] { display:none !important }
-    @media(max-width:650px) { main{margin-top:14px}.card{padding:14px}.grid,.grid.three{grid-template-columns:1fr}.country-list{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))} }
+    @media(max-width:650px) { main{margin-top:14px}.card{padding:14px}.grid,.grid.three{grid-template-columns:1fr}.country-list{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+      /* 手机上结果表改卡片：一条候选一张卡，6 列纵向排，不用左右滑 */
+      .tablewrap { overflow:visible; border:0 }
+      table { min-width:0 }
+      table thead { display:none }
+      table, table tbody, table tr, table td { display:block; width:100% }
+      table tr { border:1px solid var(--line); border-radius:10px; margin:0 0 10px; padding:6px 12px; background:#0d1727 }
+      table td { border-bottom:0; padding:4px 0; overflow-wrap:anywhere }
+      table td[data-label]::before { content:attr(data-label); display:block; color:var(--muted); font-size:11px }
+      table td:first-child { font-weight:700; font-size:14px }
+      table td:first-child::before { display:none }
+    }
   </style>
 </head>
 <body>
@@ -181,8 +192,8 @@
   }
   function addCandidateRow(candidate) {
     const tr = document.createElement('tr');
-    const cell = value => { const td = document.createElement('td'); td.textContent = value || '—'; return td; };
-    tr.append(cell(candidate.candidate), cell([candidate.source_country, candidate.source_city].filter(Boolean).join(' · ')), cell('等待本机复测'), cell('—'), cell('—'), cell('—'));
+    const cell = (value, label) => { const td = document.createElement('td'); td.textContent = value || '—'; if (label) td.dataset.label = label; return td; };
+    tr.append(cell(candidate.candidate, '候选 IP:端口'), cell([candidate.source_country, candidate.source_city].filter(Boolean).join(' · '), 'Oracle 地区'), cell('等待本机复测', '本机状态'), cell('—', '本机耗时'), cell('—', 'Trace loc / colo'), cell('—', '详细结果'));
     $('resultRows').append(tr); return tr;
   }
   function setCandidateResult(row, result) {
