@@ -270,6 +270,7 @@ func main() {
 
 	http.HandleFunc("/trace", requireAuth(handleTracePage))
 	http.HandleFunc("/api/trace-countries", requireAuth(handleTraceCountryList))
+	http.HandleFunc("/api/regional-ips", requireAuth(handleRegionalIPList))
 	if !traceOnlyWeb {
 		http.HandleFunc("/api/trace-check", requireAuth(handleTraceCheck))
 	}

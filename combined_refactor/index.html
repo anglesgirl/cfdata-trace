@@ -303,8 +303,11 @@
             margin-bottom: 10px;
         }
 
-        #officialControls,
-        #nsbControls {
+        #sourceOfficial,
+        #sourceRegional,
+        #sourceCustom,
+        #sharedParams,
+        #nsbExtraParams {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 16px;
@@ -1525,8 +1528,11 @@
                 padding: 10px;
             }
 
-            #officialControls,
-            #nsbControls {
+            #sourceOfficial,
+            #sourceRegional,
+            #sourceCustom,
+            #sharedParams,
+            #nsbExtraParams {
                 grid-template-columns: 1fr;
             }
 
@@ -1682,15 +1688,14 @@
         <div class="status-bar" id="status">正在连接服务器...</div>
 
         <div class="mode-switch">
-            <button class="mode-btn active" id="btnOfficial" onclick="switchMode('official')">☁️ 官方优选</button>
-            <button class="mode-btn" id="btnNSB" onclick="switchMode('nsb')">📂 非标优选</button>
-			<a class="mode-btn" href="/trace" style="display:flex;align-items:center;justify-content:center;text-decoration:none;">🔎 Trace 检测</a>
-			<a class="mode-btn" id="localRetestLink" href="/oracle-local" style="display:none;align-items:center;justify-content:center;text-decoration:none;">📱 本机复测</a>
-			<script>(function(){var h=location.hostname;if(h==='127.0.0.1'||h==='localhost'){var el=document.getElementById('localRetestLink');if(el)el.style.display='flex';}})();</script>
+            <button class="mode-btn active" id="btnSourceOfficial" onclick="switchSource('official')">☁️ 官方优选</button>
+            <button class="mode-btn" id="btnSourceRegional" onclick="switchSource('regional')">🌍 地区候选</button>
+            <button class="mode-btn" id="btnSourceCustom" onclick="switchSource('custom')">📂 自定义</button>
         </div>
 
         <div class="section-box controls">
-            <div id="officialControls">
+            <!-- 数据源：官方 -->
+            <div id="sourceOfficial">
                 <div class="control-title">
                     <span>官方参数</span>
                     <span style="font-size:12px;color:var(--text-secondary);">端口可选</span>
@@ -1724,59 +1729,6 @@
                         </optgroup>
                     </select>
                 </div>
-                <div class="option-item">
-                    <span class="label" title="同时扫描的线程数">🚀 并发数量</span>
-                    <input id="officialThreads" type="number" value="100" placeholder="默认 100">
-                </div>
-                <div class="option-item">
-                    <span class="label" title="超过此值的连接将被过滤，单位毫秒">⏱️ 扫描合格延迟</span>
-                    <input id="officialDelay" type="number" value="500" placeholder="默认 500ms">
-                </div>
-                <div class="option-item">
-                    <span class="label" title="测速达标下限，单位 MB/s">📉 测试合格速度</span>
-                    <input id="officialSpeedMin" type="number" value="0.1" step="0.01" placeholder="默认 0.1MB/s" oninput="syncOfficialSpeedConfigState()">
-                </div>
-                <div class="option-item">
-                    <span class="label" title="测速达标结果的最大数量，关闭测速填 0">🏁 测速结果数量</span>
-                    <input id="officialSpeedLimit" type="number" value="5" placeholder="0 关闭测速">
-                </div>
-                <div class="option-item">
-                    <span class="label" title="扫描完成后自动进行详细测试和测速">🧪 自动测速</span>
-                    <select id="officialAutoSpeed" onchange="updateOfficialAutoSpeedControls()">
-                        <option value="off" selected>关闭</option>
-                        <option value="on">开启</option>
-                    </select>
-                </div>
-                <div class="option-item">
-                    <span class="label" title="指定数据中心，留空自动选择">🏢 数据中心</span>
-                    <input id="officialTargetDC" type="text" value="" placeholder="留空自动选择" disabled>
-                </div>
-                <div class="option-item full-width">
-                    <span class="label">📡 扫描方式</span>
-                    <div class="field-with-action">
-                        <select id="officialScanMode" class="speed-url-select" onchange="updateScanModeHint()">
-                            <option value="tcping" selected>TCPing（默认）</option>
-                            <option value="httping">HTTPing</option>
-                        </select>
-                        <input id="officialScanModeHint" type="text" value="仅测量 TCP 握手延迟" readonly style="flex:1;min-width:0;">
-                    </div>
-                </div>
-                <div class="option-item full-width">
-                    <span class="label">🔗 测速网址</span>
-                    <div class="field-with-action">
-                        <select id="officialSpeedUrlPreset" class="speed-url-select" onchange="applySpeedUrlPreset('officialSpeedUrl', this.value)">
-                            <option value="auto" selected>自动选择</option>
-                            <option value="speed.cloudflare.com/__down?bytes=99999999">Cloudflare</option>
-                            <option value="cf.090227.xyz/__down?bytes=99999999">CM提供</option>
-                            <option value="speed.okl.abrdns.com">移动专属</option>
-                            <option value="custom">手动输入</option>
-                        </select>
-                        <input id="officialSpeedUrl" type="text" value="自动选择"
-                            placeholder="例如 speed.okl.abrdns.com" oninput="markSpeedUrlCustom('officialSpeedUrlPreset')">
-                        <button class="mini-action-btn" title="恢复自动选择测速网站"
-                            onclick="resetDefaultSpeedUrl('officialSpeedUrl', 'officialSpeedUrlPreset')">↺</button>
-                    </div>
-                </div>
                 <div class="option-item full-width">
                     <span class="label">🧹 精简地址库</span>
                     <div class="field-with-action">
@@ -1786,15 +1738,40 @@
                             onclick="startCompactIPv4()">🧹</button>
                     </div>
                 </div>
+            </div>
+
+            <!-- 数据源：地区候选（NiREvil/VLESS 地区清单，与 Trace 初筛同一份） -->
+            <div id="sourceRegional" class="hidden">
+                <div class="control-title">
+                    <span>地区候选</span>
+                    <span style="font-size:12px;color:var(--text-secondary);" id="regionalInfo">正在加载地区清单…</span>
+                </div>
                 <div class="option-item full-width">
-                    <span class="label">⬆ 自动上传</span>
-                    <select id="officialAutoUploadAccount"></select>
+                    <span class="label">🌍 选择地区</span>
+                    <div class="field-with-action" style="flex-direction:column;align-items:stretch;gap:6px;">
+                        <div style="display:flex;gap:6px;">
+                            <input id="regionalCountrySearch" type="text" placeholder="搜索地区，如 SG / 新加坡" oninput="filterRegionalCountries()" style="flex:1;min-width:0;">
+                            <button class="mini-action-btn" title="全选" onclick="selectRegionalCountries('all')">全选</button>
+                            <button class="mini-action-btn" title="清空" onclick="selectRegionalCountries('none')">清空</button>
+                            <button class="mini-action-btn" title="常用地区" onclick="selectRegionalCountries('common')">常用</button>
+                        </div>
+                        <div id="regionalCountryList" style="display:flex;flex-wrap:wrap;gap:6px;max-height:132px;overflow:auto;"></div>
+                    </div>
+                </div>
+                <div class="option-item">
+                    <span class="label" title="每个地区最多取多少个候选">📦 每地区数量</span>
+                    <input id="regionalPerCountry" type="number" value="200" placeholder="每地区最多 200">
+                </div>
+                <div class="option-item">
+                    <span class="label" title="整批候选上限">🎯 总数上限</span>
+                    <input id="regionalTotalLimit" type="number" value="1000" placeholder="最多 2000">
                 </div>
             </div>
 
-            <div id="nsbControls" class="hidden">
+            <!-- 数据源：自定义（文件或 URL） -->
+            <div id="sourceCustom" class="hidden">
                 <div class="control-title">
-                    <span>非标参数</span>
+                    <span>自定义</span>
                     <span style="font-size:12px;color:var(--text-secondary);">支持上传 txt/csv 文件或填写网络
                         URL（二选一）；若识别失败，请整理为每行一个目标，格式：IP 空格 端口，例如 1.2.3.4 443</span>
                 </div>
@@ -1808,44 +1785,88 @@
                     <input id="nsbSourceUrl" type="url" placeholder="https://example.com/ip-list.txt"
                         oninput="syncNSBInputMode('url')">
                 </div>
-                <div class="option-item">
-                    <span class="label" title="未指定端口时使用的默认端口">🚪 备用端口</span>
-                    <input id="nsbFallbackPort" type="number" value="443" placeholder="关闭 TLS 默认 80，开启 TLS 默认 443">
+            </div>
+
+            <!-- 扫描参数（三个数据源共用，只留一份） -->
+            <div id="sharedParams">
+                <div class="control-title">
+                    <span>扫描参数</span>
                 </div>
                 <div class="option-item">
                     <span class="label" title="同时扫描的线程数">🚀 并发数量</span>
-                    <input id="nsbThreads" type="number" value="100" placeholder="默认 100">
+                    <input id="scanThreads" type="number" value="100" placeholder="默认 100">
                 </div>
                 <div class="option-item">
                     <span class="label" title="超过此值的连接将被过滤，单位毫秒">⏱️ 扫描合格延迟</span>
-                    <input id="nsbDelay" type="number" value="0" placeholder="默认 0ms">
+                    <input id="scanDelay" type="number" value="500" placeholder="默认 500ms">
+                </div>
+                <div class="option-item">
+                    <span class="label" title="测速达标下限，单位 MB/s">📉 测试合格速度</span>
+                    <input id="scanSpeedMin" type="number" value="0.1" step="0.01" placeholder="默认 0.1MB/s" oninput="syncSharedSpeedConfigState()">
+                </div>
+                <div class="option-item">
+                    <span class="label" title="测速达标结果的最大数量，关闭测速填 0">🏁 测速结果数量</span>
+                    <input id="scanSpeedLimit" type="number" value="5" placeholder="0 关闭测速">
+                </div>
+                <div class="option-item">
+                    <span class="label" title="扫描完成后自动进行详细测试和测速">🧪 自动测速</span>
+                    <select id="scanAutoSpeed" onchange="updateAutoSpeedControls()">
+                        <option value="off" selected>关闭</option>
+                        <option value="on">开启</option>
+                    </select>
+                </div>
+                <div class="option-item">
+                    <span class="label" title="官方：自动测速时指定数据中心，留空自动选；非标/地区：按数据中心筛选结果">🏢 数据中心</span>
+                    <input id="scanDC" type="text" value="" placeholder="留空自动选择，如 NRT">
+                </div>
+                <div class="option-item full-width">
+                    <span class="label">📡 扫描方式</span>
+                    <div class="field-with-action">
+                        <select id="scanMode" class="speed-url-select" onchange="updateScanModeHint()">
+                            <option value="tcping" selected>TCPing（默认）</option>
+                            <option value="httping">HTTPing</option>
+                        </select>
+                        <input id="scanModeHint" type="text" value="仅测量 TCP 握手延迟" readonly style="flex:1;min-width:0;">
+                    </div>
+                </div>
+                <div class="option-item full-width">
+                    <span class="label">🔗 测速网址</span>
+                    <div class="field-with-action">
+                        <select id="speedUrlPreset" class="speed-url-select" onchange="applySpeedUrlPreset('speedUrl', this.value)">
+                            <option value="auto" selected>自动选择</option>
+                            <option value="speed.cloudflare.com/__down?bytes=99999999">Cloudflare</option>
+                            <option value="cf.090227.xyz/__down?bytes=99999999">CM提供</option>
+                            <option value="speed.okl.abrdns.com">移动专属</option>
+                            <option value="custom">手动输入</option>
+                        </select>
+                        <input id="speedUrl" type="text" value="自动选择"
+                            placeholder="例如 speed.okl.abrdns.com" oninput="markSpeedUrlCustom('speedUrlPreset')">
+                        <button class="mini-action-btn" title="恢复自动选择测速网站"
+                            onclick="resetDefaultSpeedUrl('speedUrl', 'speedUrlPreset')">↺</button>
+                    </div>
+                </div>
+                <div class="option-item full-width">
+                    <span class="label">⬆ 自动上传</span>
+                    <select id="autoUploadAccount"></select>
+                </div>
+            </div>
+
+            <!-- 非标/地区专属参数（官方时隐藏） -->
+            <div id="nsbExtraParams" class="hidden">
+                <div class="control-title">
+                    <span>非标参数</span>
+                </div>
+                <div class="option-item">
+                    <span class="label" title="未指定端口时使用的默认端口">🚪 备用端口</span>
+                    <input id="nsbFallbackPort" type="number" value="443" placeholder="关闭 TLS 默认 80，开启 TLS 默认 443">
                 </div>
                 <div class="option-item">
                     <span class="label" title="延迟测试通过的结果数量上限">🎯 扫描合格数量</span>
                     <input id="nsbResultLimit" type="number" value="1000" placeholder="非 0 正整数">
                 </div>
                 <div class="option-item">
-                    <span class="label" title="测速达标下限，单位 MB/s">📉 测试合格速度</span>
-                    <input id="nsbSpeedMin" type="number" value="0.1" step="0.01" placeholder="默认 0.1MB/s" oninput="syncNSBSpeedConfigState()">
-                </div>
-                <div class="option-item">
-                    <span class="label" title="测速达标结果的最大数量，关闭测速填 0">🏁 测速结果数量</span>
-                    <input id="nsbSpeedLimit" type="number" value="5" placeholder="0 关闭测速">
-                </div>
-                <div class="option-item">
-                    <span class="label" title="扫描完成后自动进行测速">🧪 自动测速</span>
-                    <select id="nsbEnableSpeed" onchange="updateNSBSpeedControls()">
-                        <option value="on">开启</option>
-                        <option value="off" selected>关闭</option>
-                    </select>
-                </div>
-                <div class="option-item">
                     <span class="label" title="同时测速的 IP 数量，设为 1 可获得准确速度">⚡ 测速并发</span>
                     <input id="nsbSpeedTest" type="number" value="0" placeholder="0 关闭测速">
-                </div>
-                <div class="option-item">
-                    <span class="label" title="按数据中心筛选结果">🏢 数据中心</span>
-                    <input id="nsbTargetDC" type="text" value="" placeholder="留空不限制，如 NRT">
                 </div>
                 <div class="option-item">
                     <span class="label" title="表格列数精简或完整">🧾 精简表格</span>
@@ -1866,32 +1887,6 @@
                     <input id="nsbOutFile" type="text" value="ip.csv" placeholder="ip.csv">
                 </div>
                 <div class="option-item full-width">
-                    <span class="label">📡 扫描方式</span>
-                    <div class="field-with-action">
-                        <select id="nsbScanMode" class="speed-url-select" onchange="updateScanModeHint()">
-                            <option value="tcping" selected>TCPing（默认）</option>
-                            <option value="httping">HTTPing</option>
-                        </select>
-                        <input id="nsbScanModeHint" type="text" value="仅测量 TCP 握手延迟" readonly style="flex:1;min-width:0;">
-                    </div>
-                </div>
-                <div class="option-item full-width">
-                    <span class="label">🔗 测速网址</span>
-                    <div class="field-with-action">
-                        <select id="nsbSpeedUrlPreset" class="speed-url-select" onchange="applySpeedUrlPreset('nsbSpeedUrl', this.value)">
-                            <option value="auto" selected>自动选择</option>
-                            <option value="speed.cloudflare.com/__down?bytes=99999999">Cloudflare</option>
-                            <option value="cf.090227.xyz/__down?bytes=99999999">CM提供</option>
-                            <option value="speed.okl.abrdns.com">移动专属</option>
-                            <option value="custom">手动输入</option>
-                        </select>
-                        <input id="nsbSpeedUrl" type="text" value="自动选择"
-                            placeholder="speed.okl.abrdns.com" oninput="markSpeedUrlCustom('nsbSpeedUrlPreset')">
-                        <button class="mini-action-btn" title="恢复自动选择测速网站"
-                            onclick="resetDefaultSpeedUrl('nsbSpeedUrl', 'nsbSpeedUrlPreset')">↺</button>
-                    </div>
-                </div>
-                <div class="option-item full-width">
                     <span class="label" title="扫描完成后对结果做真实链路验证（TCP+TLS+HTTP），不可用的候选将被剔除；默认关闭，开启自动测速时自动跟随执行">🔬 链路复验</span>
                     <div class="field-with-action">
                         <select id="nsbRelinkPreset" class="speed-url-select" onchange="applyRelinkPreset()">
@@ -1906,10 +1901,6 @@
                         <button class="mini-action-btn" title="恢复公共探针"
                             onclick="resetRelinkDefault()">↺</button>
                     </div>
-                </div>
-                <div class="option-item full-width">
-                    <span class="label">⬆ 自动上传</span>
-                    <select id="nsbAutoUploadAccount"></select>
                 </div>
             </div>
 
@@ -2006,6 +1997,16 @@
                         </thead>
                         <tbody></tbody>
                     </table>
+                </div>
+            </div>
+
+            <div class="section-box">
+                <h3>结果验证</h3>
+                <p style="font-size:13px;color:var(--text-secondary);margin:6px 0 10px;">扫出来的候选先验证再用：Trace 检测核对路由与落地区域；本机复测在手机上逐条复测 Oracle 筛出的候选（仅本机打开时可用）。</p>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;">
+                    <a class="action-btn export-btn" href="/trace" style="text-decoration:none;display:inline-flex;align-items:center;">🔎 Trace 检测</a>
+                    <a class="action-btn export-btn" id="localRetestLink" href="/oracle-local" style="display:none;text-decoration:none;align-items:center;">📱 本机复测</a>
+                    <script>(function(){var h=location.hostname;if(h==='127.0.0.1'||h==='localhost'){var el=document.getElementById('localRetestLink');if(el)el.style.display='inline-flex';}})();</script>
                 </div>
             </div>
         </div>
@@ -2423,6 +2424,9 @@
         let scanResultsCount = 0;
         let testResultsCount = 0;
         let currentMode = 'official';
+        // 数据源：official（官方）/ regional（地区候选）/ custom（自定义文件或 URL）。
+        // 地区候选与自定义都走非标扫描引擎，所以 currentMode 在这两者下都是 'nsb'。
+        let currentSource = 'official';
         let uploadedFileName = '';
         let uploadedFileContent = '';
         let nsbHeaders = [];
@@ -2502,10 +2506,14 @@
         const progressBox = document.getElementById('progressBox');
         const progressBar = document.getElementById('progressBar');
 
-        const modeOfficial = document.getElementById('btnOfficial');
-        const modeNSB = document.getElementById('btnNSB');
-        const officialControls = document.getElementById('officialControls');
-        const nsbControls = document.getElementById('nsbControls');
+        const btnSourceOfficial = document.getElementById('btnSourceOfficial');
+        const btnSourceRegional = document.getElementById('btnSourceRegional');
+        const btnSourceCustom = document.getElementById('btnSourceCustom');
+        const sourceOfficial = document.getElementById('sourceOfficial');
+        const sourceRegional = document.getElementById('sourceRegional');
+        const sourceCustom = document.getElementById('sourceCustom');
+        const sharedParams = document.getElementById('sharedParams');
+        const nsbExtraParams = document.getElementById('nsbExtraParams');
         const fileInput = document.getElementById('nsbFileInput');
         const nsbSourceUrlInput = document.getElementById('nsbSourceUrl');
 
@@ -2622,37 +2630,46 @@
         }
 
         function initializeUI() {
-            updateNSBSpeedControls();
-            updateOfficialAutoSpeedControls();
+            updateAutoSpeedControls();
             updateBatchSpeedButton();
         }
 
+        // 统一的自动测速联动：官方时数据中心输入只在开启自动测速时可用；
+        // 地区候选/自定义时数据中心是筛选条件常开，测速并发随自动测速开关。
+        function updateAutoSpeedControls() {
+            const autoSpeed = document.getElementById('scanAutoSpeed');
+            const targetDC = document.getElementById('scanDC');
+            const speedTestInput = document.getElementById('nsbSpeedTest');
+            if (!autoSpeed) return;
+            const enabled = String(autoSpeed.value || 'off').toLowerCase() === 'on';
+            if (targetDC) {
+                if (currentSource === 'official') {
+                    targetDC.disabled = !enabled;
+                    if (targetDC.disabled) targetDC.value = '';
+                } else {
+                    targetDC.disabled = false;
+                }
+            }
+            if (speedTestInput) {
+                if (enabled) {
+                    speedTestInput.disabled = false;
+                    if (String(speedTestInput.value).trim() === '0') {
+                        speedTestInput.value = '5';
+                    }
+                } else {
+                    speedTestInput.value = '0';
+                    speedTestInput.disabled = true;
+                }
+            }
+            updateNSBSpeedButtons();
+        }
+
         function updateOfficialAutoSpeedControls() {
-            const autoSpeed = document.getElementById('officialAutoSpeed');
-            const targetDC = document.getElementById('officialTargetDC');
-            if (!autoSpeed || !targetDC) return;
-            targetDC.disabled = String(autoSpeed.value || 'off').toLowerCase() !== 'on';
-            if (targetDC.disabled) targetDC.value = '';
+            updateAutoSpeedControls();
         }
 
         function updateNSBSpeedControls() {
-            const enableSpeedTest = document.getElementById('nsbEnableSpeed');
-            const speedTestInput = document.getElementById('nsbSpeedTest');
-            if (!enableSpeedTest || !speedTestInput) return;
-
-            const speedEnabled = String(enableSpeedTest.value || 'off').toLowerCase() === 'on';
-            if (speedEnabled) {
-                speedTestInput.disabled = false;
-                if (String(speedTestInput.value).trim() === '0') {
-                    speedTestInput.value = '5';
-                }
-                updateNSBSpeedButtons();
-                return;
-            }
-
-            speedTestInput.value = '0';
-            speedTestInput.disabled = true;
-            updateNSBSpeedButtons();
+            updateAutoSpeedControls();
         }
 
         function updateNSBFallbackPortDefault() {
@@ -2715,7 +2732,7 @@
             input.readOnly = false;
         }
 
-        function resetDefaultSpeedUrl(targetId = 'officialSpeedUrl', presetId = '') {
+        function resetDefaultSpeedUrl(targetId = 'speedUrl', presetId = '') {
             const input = document.getElementById(targetId);
             if (!input) return;
             input.value = AUTO_SPEED_URL_LABEL;
@@ -2774,7 +2791,7 @@
         function applySpeedURLStatus(payload) {
             if (!payload || !Array.isArray(payload.urls)) return;
             const entries = payload.urls;
-            const presetIds = ['officialSpeedUrlPreset', 'nsbSpeedUrlPreset'];
+            const presetIds = ['speedUrlPreset'];
             for (const presetId of presetIds) {
                 const preset = document.getElementById(presetId);
                 if (!preset) continue;
@@ -2813,34 +2830,38 @@
                 return el ? el.value : 'off';
             }
             return {
+                source: currentSource,
+                shared: {
+                    scanMode: selVal('scanMode'),
+                    threads: val('scanThreads'),
+                    delay: val('scanDelay'),
+                    speedMin: val('scanSpeedMin'),
+                    speedLimit: val('scanSpeedLimit'),
+                    autoSpeed: selVal('scanAutoSpeed'),
+                    targetDC: val('scanDC'),
+                    speedUrl: resolveSpeedTestUrl('speedUrl', 'speedUrlPreset'),
+                },
                 official: {
-                    scanMode: selVal('officialScanMode'),
                     ipType: selVal('officialIpType'),
                     port: selVal('officialTestPort'),
-                    threads: val('officialThreads'),
-                    delay: val('officialDelay'),
-                    speedMin: val('officialSpeedMin'),
-                    speedLimit: val('officialSpeedLimit'),
-                    autoSpeed: selVal('officialAutoSpeed'),
-                    targetDC: val('officialTargetDC'),
-                    speedUrl: resolveSpeedTestUrl('officialSpeedUrl', 'officialSpeedUrlPreset'),
+                },
+                regional: {
+                    countries: [...selectedRegionalCountries].sort(),
+                    perCountry: val('regionalPerCountry'),
+                    totalLimit: val('regionalTotalLimit'),
+                },
+                custom: {
+                    sourceUrl: val('nsbSourceUrl'),
                 },
                 nsb: {
-                    scanMode: selVal('nsbScanMode'),
-                    threads: val('nsbThreads'),
-                    delay: val('nsbDelay'),
                     resultLimit: val('nsbResultLimit'),
                     fallbackPort: val('nsbFallbackPort'),
-                    speedMin: val('nsbSpeedMin'),
-                    speedLimit: val('nsbSpeedLimit'),
                     speedTest: val('nsbSpeedTest'),
-                    enableSpeed: selVal('nsbEnableSpeed'),
-                    targetDC: val('nsbTargetDC'),
                     tls: selVal('nsbTls'),
                     compactView: selVal('nsbCompactView'),
                     outFile: val('nsbOutFile'),
-                    speedUrl: resolveSpeedTestUrl('nsbSpeedUrl', 'nsbSpeedUrlPreset'),
-                    sourceUrl: val('nsbSourceUrl'),
+                    relinkPreset: val('nsbRelinkPreset'),
+                    relinkHost: val('nsbRelinkHost'),
                 },
             };
         }
@@ -2852,43 +2873,48 @@
         }
 
         function applyConfigValues(config) {
+            // 新格式：{source, shared, official, regional, custom, nsb}。
+            // 旧格式只有 {official, nsb}，共享参数从 official 里取（与旧版默认值一致）。
+            const shared = config.shared || config.official || {};
             const o = config.official || {};
             const n = config.nsb || {};
-            setValue('officialScanMode', o.scanMode);
+            const r = config.regional || {};
+            const c = config.custom || {};
+            setValue('scanMode', shared.scanMode);
+            setValue('scanThreads', shared.threads);
+            setValue('scanDelay', shared.delay);
+            setValue('scanSpeedMin', shared.speedMin);
+            setValue('scanSpeedLimit', shared.speedLimit);
+            setValue('scanAutoSpeed', shared.autoSpeed);
+            setValue('scanDC', shared.targetDC);
             setValue('officialIpType', o.ipType);
             setValue('officialTestPort', o.port);
-            setValue('officialThreads', o.threads);
-            setValue('officialDelay', o.delay);
-            setValue('officialSpeedMin', o.speedMin);
-            setValue('officialSpeedLimit', o.speedLimit);
-            setValue('officialAutoSpeed', o.autoSpeed);
-            setValue('officialTargetDC', o.targetDC);
-            setValue('nsbScanMode', n.scanMode);
-            setValue('nsbThreads', n.threads);
-            setValue('nsbDelay', n.delay);
             setValue('nsbResultLimit', n.resultLimit);
             setValue('nsbFallbackPort', n.fallbackPort);
-            setValue('nsbSpeedMin', n.speedMin);
-            setValue('nsbSpeedLimit', n.speedLimit);
             setValue('nsbSpeedTest', n.speedTest);
-            setValue('nsbEnableSpeed', n.enableSpeed);
-            setValue('nsbTargetDC', n.targetDC);
             if (n.tls) setValue('nsbTls', n.tls);
             if (n.compactView) setValue('nsbCompactView', n.compactView);
             setValue('nsbOutFile', n.outFile);
-            setValue('nsbSourceUrl', n.sourceUrl);
+            setValue('nsbSourceUrl', c.sourceUrl || n.sourceUrl);
+            setValue('regionalPerCountry', r.perCountry);
+            setValue('regionalTotalLimit', r.totalLimit);
+            if (Array.isArray(r.countries)) {
+                selectedRegionalCountries = new Set(r.countries.map((x) => String(x).toUpperCase()));
+                renderRegionalCountries();
+            }
             if (n.relinkPreset !== undefined) {
                 setValue('nsbRelinkPreset', n.relinkPreset);
                 if (n.relinkHost !== undefined) setValue('nsbRelinkHost', n.relinkHost);
                 syncRelinkControls();
             }
-            if (o.speedUrl) applySpeedUrlConfig('officialSpeedUrl', 'officialSpeedUrlPreset', o.speedUrl);
-            if (n.speedUrl) applySpeedUrlConfig('nsbSpeedUrl', 'nsbSpeedUrlPreset', n.speedUrl);
+            if (shared.speedUrl) applySpeedUrlConfig('speedUrl', 'speedUrlPreset', shared.speedUrl);
             syncOfficialSpeedConfigState();
             syncNSBSpeedConfigState();
-            updateOfficialAutoSpeedControls();
-            updateNSBSpeedControls();
+            updateAutoSpeedControls();
             updateNSBCompactToggle();
+            if (config.source === 'official' || config.source === 'regional' || config.source === 'custom') {
+                switchSource(config.source);
+            }
         }
 
         function saveConfigToLS() {
@@ -3321,21 +3347,12 @@
         }
 
         function getScanMode() {
-            if (currentMode === 'official') {
-                const el = document.getElementById('officialScanMode');
-                return el ? el.value : 'tcping';
-            }
-            const el = document.getElementById('nsbScanMode');
+            const el = document.getElementById('scanMode');
             return el ? el.value : 'tcping';
         }
 
         function getScanModeHint() {
-            if (currentMode === 'official') {
-                const el = document.getElementById('officialScanModeHint');
-                return el || null;
-            }
-            const el = document.getElementById('nsbScanModeHint');
-            return el || null;
+            return document.getElementById('scanModeHint') || null;
         }
 
         function getScanModeLabel() {
@@ -3353,14 +3370,22 @@
             }
         }
 
-        function switchMode(mode) {
-            currentMode = mode;
-            modeOfficial.classList.toggle('active', mode === 'official');
-            modeNSB.classList.toggle('active', mode === 'nsb');
+        function switchSource(source) {
+            currentSource = source;
+            // 地区候选与自定义都走非标扫描引擎
+            currentMode = source === 'official' ? 'official' : 'nsb';
+            if (btnSourceOfficial) btnSourceOfficial.classList.toggle('active', source === 'official');
+            if (btnSourceRegional) btnSourceRegional.classList.toggle('active', source === 'regional');
+            if (btnSourceCustom) btnSourceCustom.classList.toggle('active', source === 'custom');
 
-            if (mode === 'official') {
-                officialControls.classList.remove('hidden');
-                nsbControls.classList.add('hidden');
+            if (sourceOfficial) sourceOfficial.classList.toggle('hidden', source !== 'official');
+            if (sourceRegional) sourceRegional.classList.toggle('hidden', source !== 'regional');
+            if (sourceCustom) sourceCustom.classList.toggle('hidden', source !== 'custom');
+            // 非标参数只在地区候选/自定义时出现
+            if (nsbExtraParams) nsbExtraParams.classList.toggle('hidden', source === 'official');
+            if (source === 'regional') loadRegionalCountries();
+
+            if (source === 'official') {
                 document.querySelector('.tabs .tab:last-child').style.display = 'block';
                 document.getElementById('dcSection').style.display = dcList.length ? 'block' : 'none';
                 if (!isTaskRunning) resetButton('✨ 开始扫描与测试');
@@ -3372,8 +3397,6 @@
                     renderCurrentScanResults();
                 }
             } else {
-                officialControls.classList.add('hidden');
-                nsbControls.classList.remove('hidden');
                 const testTab = document.querySelectorAll('.tab')[1];
                 testTab.style.display = 'none';
                 if (document.querySelector('.tab.active') !== document.querySelector('.tabs .tab:first-child')) {
@@ -3390,7 +3413,83 @@
             }
             if (!isTaskRunning) resetProgress();
             updateScanModeHint();
-            log(`切换至：${mode === 'official' ? '官方优选' : '非标优选'}`);
+            updateAutoSpeedControls();
+            log(`切换至：${source === 'official' ? '官方优选' : source === 'regional' ? '地区候选' : '自定义'}`);
+        }
+
+        // 兼容旧入口：原来 mode 按钮调 switchMode，现统一走 switchSource
+        function switchMode(mode) {
+            switchSource(mode === 'official' ? 'official' : 'custom');
+        }
+
+        // 共享测速参数同步：官方与非标共用同一份输入，改一处两边都生效
+        function syncSharedSpeedConfigState() {
+            syncOfficialSpeedConfigState();
+            syncNSBSpeedConfigState();
+        }
+
+        // ---- 地区候选：从服务端 /api/trace-countries 拉国家/地区清单 ----
+        let regionalCountryCatalog = {};
+        let selectedRegionalCountries = new Set();
+        let regionalCountriesLoaded = false;
+
+        async function loadRegionalCountries() {
+            if (regionalCountriesLoaded) {
+                renderRegionalCountries();
+                return;
+            }
+            const info = document.getElementById('regionalInfo');
+            try {
+                const resp = await fetch('/api/trace-countries');
+                const data = await resp.json();
+                if (!resp.ok) throw new Error(data && data.error ? data.error : `HTTP ${resp.status}`);
+                regionalCountryCatalog = data.countries || {};
+                regionalCountriesLoaded = true;
+                if (info) info.textContent = `共 ${Object.keys(regionalCountryCatalog).length} 个地区 · 清单与 Trace 初筛同一份`;
+                renderRegionalCountries();
+            } catch (err) {
+                if (info) info.textContent = '地区清单加载失败：' + (err && err.message ? err.message : err);
+            }
+        }
+
+        function renderRegionalCountries() {
+            const list = document.getElementById('regionalCountryList');
+            if (!list) return;
+            const query = (document.getElementById('regionalCountrySearch')?.value || '').trim().toLowerCase();
+            const codes = Object.keys(regionalCountryCatalog).sort();
+            const shown = codes.filter((code) => {
+                if (!query) return true;
+                const name = String(regionalCountryCatalog[code] || '').toLowerCase();
+                return code.toLowerCase().includes(query) || name.includes(query);
+            });
+            list.innerHTML = shown.map((code) => {
+                const name = regionalCountryCatalog[code] || code;
+                const on = selectedRegionalCountries.has(code);
+                return `<button type="button" data-code="${code}" onclick="toggleRegionalCountry('${code}')" style="padding:4px 10px;border-radius:999px;border:1px solid ${on ? 'var(--accent-color,#3b82f6)' : 'var(--border-color,#334155)'};background:${on ? 'var(--accent-color,#3b82f6)' : 'transparent'};color:${on ? '#fff' : 'inherit'};cursor:pointer;font-size:13px;">${code} ${escapeHTML(name)}</button>`;
+            }).join('') || '<span style="color:var(--text-secondary);font-size:13px;">没有匹配的地区</span>';
+        }
+
+        function toggleRegionalCountry(code) {
+            if (selectedRegionalCountries.has(code)) selectedRegionalCountries.delete(code);
+            else selectedRegionalCountries.add(code);
+            renderRegionalCountries();
+        }
+
+        function filterRegionalCountries() {
+            renderRegionalCountries();
+        }
+
+        function selectRegionalCountries(kind) {
+            if (kind === 'all') {
+                selectedRegionalCountries = new Set(Object.keys(regionalCountryCatalog));
+            } else if (kind === 'none') {
+                selectedRegionalCountries = new Set();
+            } else {
+                // 常用：用户 Gateway 里最常配的几个地区
+                const common = ['SG', 'HK', 'JP', 'KR', 'TW', 'US', 'GB', 'DE', 'NL', 'CA'];
+                selectedRegionalCountries = new Set(common.filter((c) => regionalCountryCatalog[c]));
+            }
+            renderRegionalCountries();
         }
 
         function switchTab(tabId) {
@@ -3659,19 +3758,19 @@
                 el.value = value;
             };
             setValue('officialIpType', params.ipType);
-            setValue('officialThreads', params.threads || params.maxThreads);
+            setValue('scanThreads', params.threads || params.maxThreads);
             setValue('officialTestPort', params.port);
-            setValue('officialDelay', params.delay);
-            setValue('officialSpeedLimit', params.speedLimit);
-            setValue('officialSpeedMin', params.speedMin);
-            setValue('officialTargetDC', params.dc);
-            setValue('nsbThreads', params.maxThreads);
+            setValue('scanDelay', params.delay);
+            setValue('scanSpeedLimit', params.speedLimit);
+            setValue('scanSpeedMin', params.speedMin);
+            setValue('scanDC', params.dc);
+            setValue('scanThreads', params.maxThreads);
             setValue('nsbFallbackPort', params.fallbackPort);
             setValue('nsbResultLimit', params.resultLimit);
-            setValue('nsbSpeedLimit', params.speedLimit);
-            setValue('nsbSpeedMin', params.speedMin);
+            setValue('scanSpeedLimit', params.speedLimit);
+            setValue('scanSpeedMin', params.speedMin);
             setValue('nsbSpeedTest', params.speedTest);
-            setValue('nsbTargetDC', params.dc);
+            setValue('scanDC', params.dc);
             setValue('nsbOutFile', params.outFile);
             if (params.enableTLS !== undefined) setValue('nsbTls', params.enableTLS ? 'on' : 'off');
             syncOfficialSpeedConfigState();
@@ -3848,8 +3947,8 @@
         }
 
         function syncNSBSpeedConfigState() {
-            const speedMin = parseFloat(document.getElementById('nsbSpeedMin')?.value) || 0.1;
-            const speedLimit = parseInt(document.getElementById('nsbSpeedLimit')?.value, 10) || 0;
+            const speedMin = parseFloat(document.getElementById('scanSpeedMin')?.value) || 0.1;
+            const speedLimit = parseInt(document.getElementById('scanSpeedLimit')?.value, 10) || 0;
             const speedTest = parseInt(document.getElementById('nsbSpeedTest')?.value, 10) || 0;
             const tlsMode = String(document.getElementById('nsbTls')?.value || 'on').toLowerCase();
             nsbSpeedMinValue = speedMin;
@@ -3857,7 +3956,7 @@
                 speedMin,
                 speedLimit,
                 speedTest,
-                speedURL: resolveSpeedTestUrl('nsbSpeedUrl', 'nsbSpeedUrlPreset'),
+                speedURL: resolveSpeedTestUrl('speedUrl', 'speedUrlPreset'),
                 enableTLS: tlsMode !== 'off',
             };
         }
@@ -4497,7 +4596,7 @@
             if (requireProxyWarning(() => selectDC(dc))) return;
             if (isTaskRunning && currentTestingDC !== '') return;
             const port = parseInt(document.getElementById('officialTestPort').value);
-            const delay = parseInt(document.getElementById('officialDelay').value) || 500;
+            const delay = parseInt(document.getElementById('scanDelay').value) || 500;
 
             testResultsCount = 0;
             autoUploadKeys = new Set();
@@ -4605,7 +4704,7 @@
             if (speedVal) speedVal.textContent = '⏳...';
             currentSpeedTestingIP = ip;
             const port = parseInt(document.getElementById('officialTestPort').value);
-            const customUrl = resolveSpeedTestUrl('officialSpeedUrl', 'officialSpeedUrlPreset');
+            const customUrl = resolveSpeedTestUrl('speedUrl', 'speedUrlPreset');
             if (!wsSend({ type: 'start_speed_test', data: { ip, port, url: customUrl } })) {
                 if (speedVal) speedVal.textContent = '连接未就绪';
                 if (btn) {
@@ -4663,9 +4762,9 @@
 
         function getOfficialSpeedConfig() {
             const port = parseInt(document.getElementById('officialTestPort')?.value || '443', 10) || 443;
-            const url = resolveSpeedTestUrl('officialSpeedUrl', 'officialSpeedUrlPreset');
-            const speedMin = parseFloat(document.getElementById('officialSpeedMin')?.value || '0.1') || 0.1;
-            const speedLimit = parseInt(document.getElementById('officialSpeedLimit')?.value || '0', 10) || 0;
+            const url = resolveSpeedTestUrl('speedUrl', 'speedUrlPreset');
+            const speedMin = parseFloat(document.getElementById('scanSpeedMin')?.value || '0.1') || 0.1;
+            const speedLimit = parseInt(document.getElementById('scanSpeedLimit')?.value || '0', 10) || 0;
             return { port, url, speedMin, speedLimit, results: testData.slice() };
         }
 
@@ -4735,7 +4834,7 @@
                 showNoticeCard('请切换到非标模式后再测速');
                 return false;
             }
-            const enableSpeedTest = document.getElementById('nsbEnableSpeed');
+            const enableSpeedTest = document.getElementById('scanAutoSpeed');
             if (enableSpeedTest && String(enableSpeedTest.value || 'off').toLowerCase() !== 'on') {
                 enableSpeedTest.value = 'on';
                 updateNSBSpeedControls();
@@ -4876,11 +4975,11 @@
 
         function startOfficialTask() {
             const ipType = parseInt(document.getElementById('officialIpType').value);
-            const threads = parseInt(document.getElementById('officialThreads').value) || 100;
+            const threads = parseInt(document.getElementById('scanThreads').value) || 100;
             const port = parseInt(document.getElementById('officialTestPort').value) || 443;
-            const delay = parseInt(document.getElementById('officialDelay').value) || 0;
+            const delay = parseInt(document.getElementById('scanDelay').value) || 0;
             const officialSpeedConfig = syncOfficialSpeedConfigState();
-            const autoSpeed = String(document.getElementById('officialAutoSpeed')?.value || 'off').toLowerCase() === 'on';
+            const autoSpeed = String(document.getElementById('scanAutoSpeed')?.value || 'off').toLowerCase() === 'on';
             officialSpeedEnabledForResults = autoSpeed && officialSpeedConfig.speedLimit > 0;
             officialAutoSpeedPending = autoSpeed;
             officialAutoStage = autoSpeed ? 'scan' : '';
@@ -4922,7 +5021,7 @@
             if (!wsSend({ type: 'start_task', data: {
                 ipType, threads, port, delay, scanMode: getScanMode(),
                 autoSpeed: autoSpeed,
-                officialTargetDC: document.getElementById('officialTargetDC')?.value?.trim() || '',
+                officialTargetDC: document.getElementById('scanDC')?.value?.trim() || '',
                 officialSpeedPort: officialSpeedConfig.port,
                 officialSpeedURL: officialSpeedConfig.url,
                 officialSpeedMin: officialSpeedConfig.speedMin,
@@ -4939,7 +5038,7 @@
 
         function maybeStartOfficialAutoTest() {
             if (!officialAutoSpeedPending || officialAutoStage !== 'scan') return false;
-            const targetDC = document.getElementById('officialTargetDC')?.value.trim().toUpperCase() || '';
+            const targetDC = document.getElementById('scanDC')?.value.trim().toUpperCase() || '';
             const selected = targetDC ? dcList.find((dc) => String(dc.DataCenter || '').toUpperCase() === targetDC) : dcList[0];
             if (!selected) {
                 log(targetDC ? `官方自动测速未找到数据中心: ${targetDC}` : '官方自动测速没有可用数据中心');
@@ -4952,32 +5051,69 @@
             return true;
         }
 
-        function startNSBTask() {
-            syncNSBInputMode();
-            const sourceURL = nsbSourceUrlInput ? nsbSourceUrlInput.value.trim() : '';
-            const hasFile = !!uploadedFileContent.trim();
+        async function startNSBTask() {
+            // 地区候选：先从服务端取所选地区的候选 IP，拼成非标输入再开扫
+            let regionalContent = '';
+            let regionalName = '';
+            if (currentSource === 'regional') {
+                const countries = [...selectedRegionalCountries].sort();
+                if (!countries.length) {
+                    showNoticeCard('请先在「地区候选」里至少选一个地区');
+                    return;
+                }
+                const perCountry = parseInt(document.getElementById('regionalPerCountry')?.value || '200', 10) || 200;
+                const totalLimit = parseInt(document.getElementById('regionalTotalLimit')?.value || '1000', 10) || 1000;
+                setStartLoading('正在拉取地区候选…');
+                let data;
+                try {
+                    const resp = await fetch(`/api/regional-ips?countries=${encodeURIComponent(countries.join(','))}&per_country=${perCountry}&total_limit=${totalLimit}`);
+                    data = await resp.json();
+                    if (!resp.ok) throw new Error(data && data.error ? data.error : `HTTP ${resp.status}`);
+                } catch (err) {
+                    resetButton('✨ 开始扫描与测试');
+                    showNoticeCard('拉取地区候选失败：' + (err && err.message ? err.message : err));
+                    return;
+                }
+                const ips = Array.isArray(data.ips) ? data.ips : [];
+                if (!ips.length) {
+                    resetButton('✨ 开始扫描与测试');
+                    showNoticeCard('所选地区没有可用候选 IP');
+                    return;
+                }
+                regionalContent = ips.map((x) => `${x.ip} ${x.port}`).join('\n');
+                regionalName = `地区候选(${countries.join(',')}).txt`;
+                log(`地区候选已拉取 ${ips.length} 条（清单更新于 ${data.updated_at || '未知'}）`);
+            } else {
+                syncNSBInputMode();
+            }
+            const sourceURL = currentSource === 'regional' ? '' : (nsbSourceUrlInput ? nsbSourceUrlInput.value.trim() : '');
+            const hasFile = currentSource === 'regional' ? !!regionalContent.trim() : !!uploadedFileContent.trim();
             const hasURL = !!sourceURL;
-            if (hasFile === hasURL) {
+            if (currentSource === 'custom' && hasFile === hasURL) {
                 showNoticeCard('请选择本地文件或填写网络 URL（二选一）');
                 return;
             }
+            if (currentSource === 'regional' && !hasFile) {
+                showNoticeCard('地区候选为空，请重新选择地区');
+                return;
+            }
 
-            const maxThreads = parseInt(document.getElementById('nsbThreads').value) || 100;
+            const maxThreads = parseInt(document.getElementById('scanThreads').value) || 100;
             const fallbackPort = parseInt(document.getElementById('nsbFallbackPort').value) || 0;
-            const speedEnabled = String(document.getElementById('nsbEnableSpeed').value || 'off').toLowerCase() === 'on';
+            const speedEnabled = String(document.getElementById('scanAutoSpeed').value || 'off').toLowerCase() === 'on';
             const speedTestInput = parseInt(document.getElementById('nsbSpeedTest').value) || 0;
-            const speedURL = resolveSpeedTestUrl('nsbSpeedUrl', 'nsbSpeedUrlPreset');
+            const speedURL = resolveSpeedTestUrl('speedUrl', 'speedUrlPreset');
             const outFile = document.getElementById('nsbOutFile').value.trim() || 'ip.csv';
             const speedTest = speedEnabled ? speedTestInput : 0;
-            nsbSpeedEnabledForResults = speedTest > 0 && (parseInt(document.getElementById('nsbSpeedLimit').value) || 0) > 0;
+            nsbSpeedEnabledForResults = speedTest > 0 && (parseInt(document.getElementById('scanSpeedLimit').value) || 0) > 0;
             nsbContinueSpeedUnlocked = false;
             const tlsMode = String(document.getElementById('nsbTls').value || 'on').toLowerCase();
             const enableTLS = tlsMode !== 'off';
-            const delay = parseInt(document.getElementById('nsbDelay').value) || 0;
+            const delay = parseInt(document.getElementById('scanDelay').value) || 0;
             const resultLimit = parseInt(document.getElementById('nsbResultLimit').value) || 0;
-            const targetDC = document.getElementById('nsbTargetDC').value.trim();
-            const speedMin = parseFloat(document.getElementById('nsbSpeedMin').value) || 0;
-            const speedLimit = parseInt(document.getElementById('nsbSpeedLimit').value) || 0;
+            const targetDC = document.getElementById('scanDC').value.trim();
+            const speedMin = parseFloat(document.getElementById('scanSpeedMin').value) || 0;
+            const speedLimit = parseInt(document.getElementById('scanSpeedLimit').value) || 0;
             nsbSpeedMinValue = speedMin;
             nsbCompactView = document.getElementById('nsbCompactView')?.value !== 'full';
             const compact = nsbCompactView;
@@ -5001,7 +5137,7 @@
 
             isTaskRunning = true;
             isStoppingTask = false;
-            runningTaskLabel = '非标优选';
+            runningTaskLabel = currentSource === 'regional' ? '地区候选' : '非标优选';
             runningTaskMode = 'nsb';
             runningTaskTab = 'scan';
             
@@ -5030,8 +5166,8 @@
             if (!wsSend({
                 type: 'start_nsb_task',
                 data: {
-                    fileName: uploadedFileName,
-                    fileContent: hasFile ? uploadedFileContent : '',
+                    fileName: currentSource === 'regional' ? regionalName : uploadedFileName,
+                    fileContent: currentSource === 'regional' ? regionalContent : (hasFile ? uploadedFileContent : ''),
                     sourceURL: hasURL ? sourceURL : '',
                     outFile,
                     maxThreads,
@@ -5375,10 +5511,8 @@
             const accounts = getGitHubAccounts();
             const accountOptions = '<option value="">新账户/不使用保存配置</option>' + accounts.map((a, i) => `<option value="${i}">${escapeHTML(a.name || a.repo || 'GitHub账户')} ${a.tokenHash ? '(' + escapeHTML(a.tokenHash.slice(0, 10)) + ')' : ''}</option>`).join('');
             if (select) select.innerHTML = accountOptions;
-            const autoSelect = document.getElementById('nsbAutoUploadAccount');
+            const autoSelect = document.getElementById('autoUploadAccount');
             if (autoSelect) autoSelect.innerHTML = '<option value="">关闭自动上传</option>' + accounts.map((a, i) => `<option value="${i}:txt">${escapeHTML(a.name || a.repo || 'GitHub账户')} - TXT</option><option value="${i}:csv">${escapeHTML(a.name || a.repo || 'GitHub账户')} - CSV</option>`).join('');
-            const officialAutoSelect = document.getElementById('officialAutoUploadAccount');
-            if (officialAutoSelect) officialAutoSelect.innerHTML = '<option value="">关闭自动上传</option>' + accounts.map((a, i) => `<option value="${i}:txt">${escapeHTML(a.name || a.repo || 'GitHub账户')} - TXT</option><option value="${i}:csv">${escapeHTML(a.name || a.repo || 'GitHub账户')} - CSV</option>`).join('');
         }
 
         function normalizeGitHubAccountKey(account) {
@@ -6217,12 +6351,12 @@
         }
 
         async function autoUploadNSBResults() {
-            const value = document.getElementById('nsbAutoUploadAccount')?.value || '';
+            const value = document.getElementById('autoUploadAccount')?.value || '';
             await autoUploadResults(value, 'nsb', '自动上传已提交');
         }
 
         async function autoUploadOfficialResults() {
-            const value = document.getElementById('officialAutoUploadAccount')?.value || '';
+            const value = document.getElementById('autoUploadAccount')?.value || '';
             await autoUploadResults(value, 'test', '官方自动上传已提交');
         }
 
@@ -6294,8 +6428,8 @@
                     if (proxyWarningRequired) log(`代理检测警告：当前网络标签 ${cfCountry}`);
                     const speedDefault = msg.data.speedTestDefault || msg.data.speedTestURL || AUTO_SPEED_URL_VALUE;
                     defaultSpeedTestUrl = speedDefault || defaultSpeedTestUrl;
-                    applySpeedUrlConfig('officialSpeedUrl', 'officialSpeedUrlPreset', speedDefault);
-                    applySpeedUrlConfig('nsbSpeedUrl', 'nsbSpeedUrlPreset', speedDefault);
+                    applySpeedUrlConfig('speedUrl', 'speedUrlPreset', speedDefault);
+                    applySpeedUrlConfig('speedUrl', 'speedUrlPreset', speedDefault);
                     applySpeedURLStatus(msg.data.speedURLStatus);
                     applyProxyStatus(msg.data.proxyStatus);
                     renderVersionInfo(msg.data || {});
@@ -6739,7 +6873,7 @@
             initializeUI();
             renderGitHubAccounts();
             renderEdgetunnelAccounts();
-            switchMode('official');
+            switchSource('official');
             initThemeFromStorage();
         });
 

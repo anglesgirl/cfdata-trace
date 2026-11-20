@@ -184,6 +184,78 @@ func handleTraceCountryList(w http.ResponseWriter, r *http.Request) {
 	writeTraceJSON(w, http.StatusOK, map[string]map[string]string{"countries": names})
 }
 
+// 地区候选 IP 清单：供“地区候选”数据源直接取用（非标扫描的输入）。
+// 与 Trace 初筛共用同一份 NiREvil/VLESS 清单与 Cloudflare 官方网段排除逻辑，
+// 只是不做 trace，只按地区挑出 IP:端口返回，前端拼成非标输入直接开扫。
+func handleRegionalIPList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		writeTraceJSONError(w, http.StatusMethodNotAllowed, "仅支持 GET")
+		return
+	}
+	countries, err := normalizeTraceCountries(strings.Split(r.URL.Query().Get("countries"), ","))
+	if err != nil {
+		writeTraceJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	perCountry := traceSweepDefaultPerCountry
+	if raw := strings.TrimSpace(r.URL.Query().Get("per_country")); raw != "" {
+		value, parseErr := strconv.Atoi(raw)
+		if parseErr != nil {
+			writeTraceJSONError(w, http.StatusBadRequest, "per_country 必须是整数")
+			return
+		}
+		perCountry, err = normalizeTraceSweepPerCountry(value)
+		if err != nil {
+			writeTraceJSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	totalLimit := traceSweepDefaultTotalLimit
+	if raw := strings.TrimSpace(r.URL.Query().Get("total_limit")); raw != "" {
+		value, parseErr := strconv.Atoi(raw)
+		if parseErr != nil {
+			writeTraceJSONError(w, http.StatusBadRequest, "total_limit 必须是整数")
+			return
+		}
+		if value < 1 || value > traceSweepMaxTotalLimit {
+			writeTraceJSONError(w, http.StatusBadRequest, fmt.Sprintf("整批候选上限必须在 1–%d 之间", traceSweepMaxTotalLimit))
+			return
+		}
+		totalLimit = value
+	}
+
+	ctx := r.Context()
+	cloudflarePrefixes, err := loadCloudflareExclusionPrefixes(ctx)
+	if err != nil {
+		writeTraceJSONError(w, http.StatusBadGateway, "Cloudflare 官方网段清单读取失败："+err.Error())
+		return
+	}
+	dataset, err := fetchPublicProxyIPDataset(ctx)
+	if err != nil {
+		writeTraceJSONError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	candidates, excluded := selectPublicProxyIPCandidates(dataset.Proxies, countries, perCountry, totalLimit, cloudflarePrefixes)
+	ips := make([]map[string]any, 0, len(candidates))
+	for _, c := range candidates {
+		ips = append(ips, map[string]any{
+			"ip":      c.Address.Address.String(),
+			"port":    int(c.Address.Port),
+			"country": c.Country,
+			"city":    c.City,
+			"region":  c.Region,
+			"isp":     c.ISP,
+		})
+	}
+	writeTraceJSON(w, http.StatusOK, map[string]any{
+		"updated_at": dataset.UpdatedAt,
+		"total":      len(ips),
+		"excluded":   excluded,
+		"ips":        ips,
+	})
+}
+
 func normalizeTraceSweepSource(value string) (string, error) {
 	source := strings.ToLower(strings.TrimSpace(value))
 	if source == "" {
