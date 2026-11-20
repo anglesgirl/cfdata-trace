@@ -1081,6 +1081,85 @@
             cursor: pointer;
         }
 
+        /* 地区选择弹窗：行式勾选，手机上放大全屏 */
+        .region-modal {
+            width: min(720px, 100%);
+        }
+        .region-modal .modal-body {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .region-modal-toolbar {
+            display: flex;
+            gap: 6px;
+            position: sticky;
+            top: 0;
+            background: var(--card-bg);
+            padding-bottom: 4px;
+            z-index: 1;
+        }
+        .region-modal-toolbar input {
+            flex: 1;
+            min-width: 0;
+        }
+        #regionalCountryList {
+            display: flex;
+            flex-direction: column;
+        }
+        .region-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 8px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            font-size: 15px;
+            min-height: 44px;
+            box-sizing: border-box;
+        }
+        .region-row:last-child {
+            border-bottom: none;
+        }
+        .region-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            accent-color: var(--accent-color, #3b82f6);
+        }
+        .region-row .region-code {
+            font-weight: 600;
+            min-width: 34px;
+        }
+        .region-row .region-name {
+            color: var(--text-secondary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* 卡片显示设置：字段勾选行 */
+        .card-field-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 8px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            font-size: 15px;
+            min-height: 44px;
+            box-sizing: border-box;
+        }
+        .card-field-row:last-child {
+            border-bottom: none;
+        }
+        .card-field-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            accent-color: var(--accent-color, #3b82f6);
+        }
+
         .modal-grid {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1650,6 +1729,41 @@
                 flex-shrink: 0;
                 text-align: left;
             }
+            /* 小卡片默认只显示重要字段，点卡片展开看全部 */
+            #scanTable tbody tr:not(.expanded) td:not([data-important="1"]),
+            #testTable tbody tr:not(.expanded) td:not([data-important="1"]) {
+                display: none;
+            }
+            #scanTable tbody tr,
+            #testTable tbody tr {
+                cursor: pointer;
+            }
+            #scanTable tbody tr::after,
+            #testTable tbody tr::after {
+                content: '展开全部 ▾';
+                display: block;
+                text-align: center;
+                color: var(--text-secondary);
+                font-size: 12px;
+                padding-top: 8px;
+            }
+            #scanTable tbody tr.expanded::after,
+            #testTable tbody tr.expanded::after {
+                content: '收起 ▴';
+            }
+            /* 地区选择弹窗：手机上接近全屏，底部弹出 */
+            .region-modal {
+                width: 100%;
+                max-height: 94vh;
+            }
+            #regionalModalMask {
+                padding: 0;
+                align-items: flex-end;
+            }
+            #regionalModalMask .result-modal {
+                border-radius: 16px 16px 0 0;
+                max-height: 94vh;
+            }
         }
     </style>
     <script>
@@ -1789,15 +1903,7 @@
                 </div>
                 <div class="option-item full-width">
                     <span class="label">🌍 选择地区</span>
-                    <div class="field-with-action" style="flex-direction:column;align-items:stretch;gap:6px;">
-                        <div style="display:flex;gap:6px;">
-                            <input id="regionalCountrySearch" type="text" placeholder="搜索地区，如 SG / 新加坡" oninput="filterRegionalCountries()" style="flex:1;min-width:0;">
-                            <button class="mini-action-btn" title="全选" onclick="selectRegionalCountries('all')">全选</button>
-                            <button class="mini-action-btn" title="清空" onclick="selectRegionalCountries('none')">清空</button>
-                            <button class="mini-action-btn" title="常用地区" onclick="selectRegionalCountries('common')">常用</button>
-                        </div>
-                        <div id="regionalCountryList" style="display:flex;flex-wrap:wrap;gap:6px;max-height:132px;overflow:auto;"></div>
-                    </div>
+                    <button class="action-btn" id="regionalSelectBtn" onclick="openRegionalModal()" style="width:100%;text-align:left;justify-content:flex-start;">🌍 选择地区（未选）</button>
                 </div>
                 <div class="option-item">
                     <span class="label" title="每个地区最多取多少个候选">📦 每地区数量</span>
@@ -2018,6 +2124,7 @@
                             <button class="action-btn export-btn" id="btnNSBBatchSpeed" onclick="startNSBBatchSpeed(false)" disabled>🚀 一键测速</button>
                             <button class="action-btn export-btn" id="btnNSBContinueSpeed" onclick="startNSBBatchSpeed(true)" disabled>⏭️ 继续测速</button>
                             <button class="action-btn export-btn" id="btnNSBSort" onclick="openSortModal('nsb')">🔎 筛选排序</button>
+                            <button class="action-btn export-btn" id="btnCardFields" onclick="openCardFieldModal()">🎴 卡片显示</button>
                             <button class="action-btn export-btn" id="btnScanCopy" onclick="openCopyModal('scan')">📋 一键复制</button>
                             <button class="action-btn export-btn" id="btnScanResultAction" onclick="openResultModal('scan')">📥 结果操作</button>
                         </span>
@@ -2051,6 +2158,7 @@
                             <button class="action-btn export-btn" id="btnBatchSpeed" onclick="startOfficialBatchSpeed(false)" disabled>🚀 一键测速</button>
                             <button class="action-btn export-btn" id="btnContinueBatchSpeed" onclick="startOfficialBatchSpeed(false, true)" disabled>⏭️ 继续测速</button>
                             <button class="action-btn export-btn" id="btnTestSort" onclick="openSortModal('official')">🔎 筛选排序</button>
+                            <button class="action-btn export-btn" id="btnTestCardFields" onclick="openCardFieldModal()">🎴 卡片显示</button>
                             <button class="action-btn export-btn" id="btnTestCopy" onclick="openCopyModal('test')">📋 一键复制</button>
                             <button class="action-btn export-btn" id="btnTestResultAction" onclick="openResultModal('test')">📥 结果操作</button>
                         </span>
@@ -2422,6 +2530,47 @@
             </div>
             <div class="modal-actions footer">
                 <button class="action-btn export-btn" onclick="applySortModal()">应用筛选排序</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 地区选择弹窗：点按钮放大全屏，勾选地区 -->
+    <div class="modal-mask" id="regionalModalMask">
+        <div class="result-modal region-modal">
+            <div class="modal-head">
+                <h3>选择地区 <span id="regionalModalCount" style="font-size:13px;color:var(--text-secondary);font-weight:400;"></span></h3>
+                <button class="modal-close" onclick="closeRegionalModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="region-modal-toolbar">
+                    <input id="regionalCountrySearch" type="text" placeholder="搜索地区，如 SG / 新加坡" oninput="filterRegionalCountries()">
+                    <button class="mini-action-btn" title="全选" onclick="selectRegionalCountries('all')">全选</button>
+                    <button class="mini-action-btn" title="清空" onclick="selectRegionalCountries('none')">清空</button>
+                    <button class="mini-action-btn" title="常用地区" onclick="selectRegionalCountries('common')">常用</button>
+                </div>
+                <div id="regionalCountryList"></div>
+            </div>
+            <div class="modal-actions footer">
+                <button class="action-btn" onclick="closeRegionalModal()">取消</button>
+                <button class="action-btn export-btn" id="regionalConfirmBtn" onclick="confirmRegionalModal()">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 卡片显示设置：小卡片默认显示哪些字段 -->
+    <div class="modal-mask" id="cardFieldModalMask">
+        <div class="result-modal region-modal">
+            <div class="modal-head">
+                <h3>卡片显示设置</h3>
+                <button class="modal-close" onclick="closeCardFieldModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">手机上小卡片默认只显示勾选的字段，点卡片可展开看全部。电脑上表格不受影响。</div>
+                <div id="cardFieldList"></div>
+            </div>
+            <div class="modal-actions footer">
+                <button class="action-btn" onclick="resetCardFields()">恢复默认</button>
+                <button class="action-btn export-btn" onclick="closeCardFieldModal()">确定</button>
             </div>
         </div>
     </div>
@@ -2931,7 +3080,9 @@
             setValue('regionalTotalLimit', r.totalLimit);
             if (Array.isArray(r.countries)) {
                 selectedRegionalCountries = new Set(r.countries.map((x) => String(x).toUpperCase()));
+                regionalModalSelection = new Set(selectedRegionalCountries);
                 renderRegionalCountries();
+                updateRegionalButtonLabel();
             }
             if (n.relinkPreset !== undefined) {
                 setValue('nsbRelinkPreset', n.relinkPreset);
@@ -3462,11 +3613,13 @@
         // ---- 地区候选：从服务端 /api/trace-countries 拉国家/地区清单 ----
         let regionalCountryCatalog = {};
         let selectedRegionalCountries = new Set();
+        let regionalModalSelection = new Set();
         let regionalCountriesLoaded = false;
 
         async function loadRegionalCountries() {
             if (regionalCountriesLoaded) {
                 renderRegionalCountries();
+                updateRegionalButtonLabel();
                 return;
             }
             const info = document.getElementById('regionalInfo');
@@ -3478,31 +3631,70 @@
                 regionalCountriesLoaded = true;
                 if (info) info.textContent = `共 ${Object.keys(regionalCountryCatalog).length} 个地区 · 清单与 Trace 初筛同一份`;
                 renderRegionalCountries();
+                updateRegionalButtonLabel();
             } catch (err) {
                 if (info) info.textContent = '地区清单加载失败：' + (err && err.message ? err.message : err);
             }
         }
 
+        // 弹窗里的地区清单（行式勾选），改的是暂存集，点确定才生效
         function renderRegionalCountries() {
             const list = document.getElementById('regionalCountryList');
-            if (!list) return;
-            const query = (document.getElementById('regionalCountrySearch')?.value || '').trim().toLowerCase();
-            const codes = Object.keys(regionalCountryCatalog).sort();
-            const shown = codes.filter((code) => {
-                if (!query) return true;
-                const name = String(regionalCountryCatalog[code] || '').toLowerCase();
-                return code.toLowerCase().includes(query) || name.includes(query);
-            });
-            list.innerHTML = shown.map((code) => {
-                const name = regionalCountryCatalog[code] || code;
-                const on = selectedRegionalCountries.has(code);
-                return `<button type="button" data-code="${code}" onclick="toggleRegionalCountry('${code}')" style="padding:4px 10px;border-radius:999px;border:1px solid ${on ? 'var(--accent-color,#3b82f6)' : 'var(--border-color,#334155)'};background:${on ? 'var(--accent-color,#3b82f6)' : 'transparent'};color:${on ? '#fff' : 'inherit'};cursor:pointer;font-size:13px;">${code} ${escapeHTML(name)}</button>`;
-            }).join('') || '<span style="color:var(--text-secondary);font-size:13px;">没有匹配的地区</span>';
+            if (list) {
+                const query = (document.getElementById('regionalCountrySearch')?.value || '').trim().toLowerCase();
+                const codes = Object.keys(regionalCountryCatalog).sort();
+                const shown = codes.filter((code) => {
+                    if (!query) return true;
+                    const name = String(regionalCountryCatalog[code] || '').toLowerCase();
+                    return code.toLowerCase().includes(query) || name.includes(query);
+                });
+                list.innerHTML = shown.map((code) => {
+                    const name = regionalCountryCatalog[code] || code;
+                    const on = regionalModalSelection.has(code);
+                    return `<label class="region-row"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleRegionalCountry('${code}')"><span class="region-code">${code}</span><span class="region-name">${escapeHTML(name)}</span></label>`;
+                }).join('') || '<span style="color:var(--text-secondary);font-size:13px;padding:10px 8px;">没有匹配的地区</span>';
+            }
+            const count = regionalModalSelection.size;
+            const countEl = document.getElementById('regionalModalCount');
+            if (countEl) countEl.textContent = count ? `已选 ${count} 个` : '未选';
+            const confirmBtn = document.getElementById('regionalConfirmBtn');
+            if (confirmBtn) confirmBtn.textContent = count ? `确定（已选 ${count} 个）` : '确定';
+        }
+
+        // 触发按钮上的已选摘要
+        function updateRegionalButtonLabel() {
+            const btn = document.getElementById('regionalSelectBtn');
+            if (!btn) return;
+            const codes = [...selectedRegionalCountries].sort();
+            if (!codes.length) {
+                btn.textContent = '🌍 选择地区（未选）';
+                return;
+            }
+            const preview = codes.slice(0, 5).join('、');
+            btn.textContent = `🌍 选择地区（已选 ${codes.length} 个：${preview}${codes.length > 5 ? '…' : ''}）`;
+        }
+
+        function openRegionalModal() {
+            regionalModalSelection = new Set(selectedRegionalCountries);
+            const search = document.getElementById('regionalCountrySearch');
+            if (search) search.value = '';
+            renderRegionalCountries();
+            document.getElementById('regionalModalMask').classList.add('active');
+        }
+
+        function closeRegionalModal() {
+            document.getElementById('regionalModalMask').classList.remove('active');
+        }
+
+        function confirmRegionalModal() {
+            selectedRegionalCountries = new Set(regionalModalSelection);
+            updateRegionalButtonLabel();
+            closeRegionalModal();
         }
 
         function toggleRegionalCountry(code) {
-            if (selectedRegionalCountries.has(code)) selectedRegionalCountries.delete(code);
-            else selectedRegionalCountries.add(code);
+            if (regionalModalSelection.has(code)) regionalModalSelection.delete(code);
+            else regionalModalSelection.add(code);
             renderRegionalCountries();
         }
 
@@ -3512,13 +3704,13 @@
 
         function selectRegionalCountries(kind) {
             if (kind === 'all') {
-                selectedRegionalCountries = new Set(Object.keys(regionalCountryCatalog));
+                regionalModalSelection = new Set(Object.keys(regionalCountryCatalog));
             } else if (kind === 'none') {
-                selectedRegionalCountries = new Set();
+                regionalModalSelection = new Set();
             } else {
                 // 常用：用户 Gateway 里最常配的几个地区
                 const common = ['SG', 'HK', 'JP', 'KR', 'TW', 'US', 'GB', 'DE', 'NL', 'CA'];
-                selectedRegionalCountries = new Set(common.filter((c) => regionalCountryCatalog[c]));
+                regionalModalSelection = new Set(common.filter((c) => regionalCountryCatalog[c]));
             }
             renderRegionalCountries();
         }
@@ -6899,7 +7091,72 @@
             }
         }
 
-        // 手机卡片式表格：给结果表的每个 td 打上对应表头的 data-label，CSS 用它做字段名
+        // 手机卡片：小卡片默认显示的重要字段（按表头规范化后的名字），可设置，存本地
+        const CARD_FIELD_OPTIONS = [
+            'IP地址', '端口号', '网络延迟', '延迟', '平均延迟', '最小延迟', '最大延迟',
+            '下载速度', '测速', '数据中心', '源IP位置', '落地区域', '地区', '城市',
+            'TLS', '丢包率', '扫描方式', '出站IP', 'IP类型', '原始输入',
+            'ASN号码', 'ASN组织', '访问协议', 'TLS版本', 'SNI', 'HTTP版本',
+            'WARP', 'Gateway', 'RBI', '密钥交换', '时间戳',
+        ];
+        const DEFAULT_CARD_FIELDS = ['IP地址', '网络延迟', '延迟', '平均延迟', '数据中心', '城市'];
+        const cardFieldStorageKey = 'cfdata-card-fields';
+        let cardImportantFields = new Set(DEFAULT_CARD_FIELDS);
+
+        function loadCardFields() {
+            try {
+                const parsed = JSON.parse(localStorage.getItem(cardFieldStorageKey) || '[]');
+                if (Array.isArray(parsed) && parsed.length) {
+                    cardImportantFields = new Set(parsed.filter((x) => CARD_FIELD_OPTIONS.includes(x)));
+                }
+            } catch (_) { /* 用默认 */ }
+            if (!cardImportantFields.size) cardImportantFields = new Set(DEFAULT_CARD_FIELDS);
+        }
+
+        function saveCardFields() {
+            try {
+                localStorage.setItem(cardFieldStorageKey, JSON.stringify([...cardImportantFields]));
+            } catch (_) { /* 存不上就只用本次 */ }
+        }
+
+        function applyCardFieldSettings() {
+            ['dcTable', 'scanTable', 'testTable'].forEach((id) => {
+                const table = document.getElementById(id);
+                if (table) stampTableCardLabels(table);
+            });
+        }
+
+        function openCardFieldModal() {
+            const list = document.getElementById('cardFieldList');
+            if (list) {
+                list.innerHTML = CARD_FIELD_OPTIONS.map((label) => {
+                    const on = cardImportantFields.has(label);
+                    return `<label class="card-field-row"><input type="checkbox" ${on ? 'checked' : ''} onchange="toggleCardField('${label}', this.checked)"><span>${escapeHTML(label)}</span></label>`;
+                }).join('');
+            }
+            document.getElementById('cardFieldModalMask').classList.add('active');
+        }
+
+        function closeCardFieldModal() {
+            document.getElementById('cardFieldModalMask').classList.remove('active');
+        }
+
+        function toggleCardField(label, checked) {
+            if (checked) cardImportantFields.add(label);
+            else cardImportantFields.delete(label);
+            saveCardFields();
+            applyCardFieldSettings();
+        }
+
+        function resetCardFields() {
+            cardImportantFields = new Set(DEFAULT_CARD_FIELDS);
+            saveCardFields();
+            applyCardFieldSettings();
+            openCardFieldModal();
+        }
+
+        // 手机卡片式表格：给结果表的每个 td 打上对应表头的 data-label，CSS 用它做字段名；
+        // 同时按卡片显示设置打 data-important，小卡片只留重要字段
         function stampTableCardLabels(table) {
             if (!table) return;
             const ths = table.querySelectorAll('thead th');
@@ -6907,16 +7164,30 @@
                 tr.querySelectorAll('td').forEach((td, i) => {
                     const label = ths[i] ? ths[i].textContent.trim() : '';
                     if (label) td.setAttribute('data-label', label);
+                    const canonical = typeof normalizeNSBHeader === 'function' ? normalizeNSBHeader(label) : label;
+                    td.dataset.important = canonical && cardImportantFields.has(canonical) ? '1' : '';
                 });
             });
         }
         function initMobileTableCards() {
+            loadCardFields();
             const tables = ['dcTable', 'scanTable', 'testTable'].map((id) => document.getElementById(id)).filter(Boolean);
             tables.forEach((table) => {
                 stampTableCardLabels(table);
                 const tbody = table.querySelector('tbody');
                 if (!tbody || !window.MutationObserver) return;
                 new MutationObserver(() => stampTableCardLabels(table)).observe(tbody, { childList: true });
+            });
+            // 点卡片展开/收起全部字段（只在手机卡片布局下生效；点复制、测速等按钮不触发）
+            ['scanTable', 'testTable'].forEach((id) => {
+                const table = document.getElementById(id);
+                if (!table) return;
+                table.addEventListener('click', (e) => {
+                    if (window.innerWidth > 650) return;
+                    if (e.target.closest('button, a, .copy-ip, input, select, textarea')) return;
+                    const tr = e.target.closest('tr');
+                    if (tr && tr.parentElement && tr.parentElement.tagName === 'TBODY') tr.classList.toggle('expanded');
+                });
             });
         }
 
