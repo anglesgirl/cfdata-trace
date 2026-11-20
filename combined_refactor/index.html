@@ -1610,6 +1610,47 @@
         *:focus {
             outline: none;
         }
+
+        /* 手机：结果表格改卡片式（作者原版是电脑宽表，手机上横向放不下） */
+        @media (max-width: 650px) {
+            #dcTable, #scanTable, #testTable {
+                min-width: 0;
+                display: block;
+            }
+            #dcTable thead, #scanTable thead, #testTable thead {
+                display: none;
+            }
+            #dcTable tbody, #scanTable tbody, #testTable tbody {
+                display: block;
+            }
+            #dcTable tbody tr, #scanTable tbody tr, #testTable tbody tr {
+                display: block;
+                border: 1px solid var(--border-color);
+                border-radius: 10px;
+                padding: 10px 12px;
+                margin-bottom: 10px;
+                background: var(--card-bg);
+            }
+            #dcTable tbody td, #scanTable tbody td, #testTable tbody td {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                padding: 4px 0;
+                border: none;
+                text-align: right;
+                min-width: 0;
+            }
+            #dcTable tbody td[data-label]::before,
+            #scanTable tbody td[data-label]::before,
+            #testTable tbody td[data-label]::before {
+                content: attr(data-label);
+                color: var(--text-secondary);
+                font-size: 13px;
+                flex-shrink: 0;
+                text-align: left;
+            }
+        }
     </style>
     <script>
     (function(){
@@ -6858,6 +6899,27 @@
             }
         }
 
+        // 手机卡片式表格：给结果表的每个 td 打上对应表头的 data-label，CSS 用它做字段名
+        function stampTableCardLabels(table) {
+            if (!table) return;
+            const ths = table.querySelectorAll('thead th');
+            table.querySelectorAll('tbody tr').forEach((tr) => {
+                tr.querySelectorAll('td').forEach((td, i) => {
+                    const label = ths[i] ? ths[i].textContent.trim() : '';
+                    if (label) td.setAttribute('data-label', label);
+                });
+            });
+        }
+        function initMobileTableCards() {
+            const tables = ['dcTable', 'scanTable', 'testTable'].map((id) => document.getElementById(id)).filter(Boolean);
+            tables.forEach((table) => {
+                stampTableCardLabels(table);
+                const tbody = table.querySelector('tbody');
+                if (!tbody || !window.MutationObserver) return;
+                new MutationObserver(() => stampTableCardLabels(table)).observe(tbody, { childList: true });
+            });
+        }
+
         window.addEventListener('DOMContentLoaded', () => {
             connect();
             initializeUI();
@@ -6865,6 +6927,7 @@
             renderEdgetunnelAccounts();
             switchSource('official');
             initThemeFromStorage();
+            initMobileTableCards();
         });
 
         function autoThemeBySystem() {
